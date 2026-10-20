@@ -4,9 +4,9 @@ Tracks staff receivables against existing posted accounting entries, with an edi
 
 ## Setup
 
-1. Install `tha_vhg_staff_credit_report` with dependencies `account`, `hr`, `mail` and Python `xlsxwriter`.
+1. Install `tha_vhg_staff_credit_report` with dependencies `account`, `hr`, `mail`, `tha_vhg_daily_cash_register` (shared Other Reports menu), and Python `xlsxwriter`.
 2. Assign **Staff Credit / Reader** or **Staff Credit / Manager** in user permissions. Admin initially receives Manager. Reader includes accounting read access; Manager adds register/configuration/import access, without granting payroll or private employee access.
-3. Select the hospital company. Open **Accounting > Staff Credit > Accounts**, select the company and its reconcilable receivable account. The default looks up `130100` in that company's chart. Configuration is explicit: no company IDs or account IDs are hard-coded in business code.
+3. Select the hospital company. Open **Accounting > Reporting > Other Reports > Staff Credit > Accounts**, select the company and its reconcilable receivable account. The default looks up `130100` in that company's chart. Configuration is explicit: no company IDs or account IDs are hard-coded in business code.
 4. Ensure staff have employee records, departments, work contacts and a unique contact **Reference** for CSV imports. The register uses `hr.employee.public` to avoid private HR permissions. Archived staff remain reportable.
 
 ## Daily use
@@ -23,7 +23,7 @@ Linked entries are protected against draft/cancellation and accounting-source ed
 
 ## Monthly report
 
-Open **Monthly Report**, select a company/month, optionally staff/department/category/open-or-settled status, and refresh. Excel and PDF always recalculate from accounting links; refresh the on-screen preview after changing filters or allocations.
+Open **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report**, select a company/month, optionally staff/department/category/open-or-settled status, and refresh. Excel and PDF always recalculate from accounting links; refresh the on-screen preview after changing filters or allocations.
 
 - **100% Bill** includes charges posted by selected month-end, including new charges during the month.
 - **Prior settlements** are all allocated credits dated before the selected month, including classified adjustments/reversals.

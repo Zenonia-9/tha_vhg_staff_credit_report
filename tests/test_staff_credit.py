@@ -214,6 +214,15 @@ class TestStaffCredit(TransactionCase):
             for view_type in types:
                 self.assertTrue(result["views"][view_type]["arch"], model)
 
+    def test_staff_credit_menu_uses_visible_other_reports_parent(self):
+        menu = self.env.ref("tha_vhg_staff_credit_report.menu_staff_credit")
+        parent = self.env.ref("tha_vhg_daily_cash_register.menu_other_reports")
+        self.assertEqual(menu.parent_id, parent)
+        visible = self.env["ir.ui.menu"].with_user(self.env.ref("base.user_admin")).load_menus(False)
+        self.assertIn(menu.id, visible)
+        self.assertIn(menu.id, visible[parent.id]["children"])
+        self.assertEqual(visible[menu.id]["app_id"], visible[parent.id]["app_id"])
+
     def test_rounding_and_reports_do_not_post_accounting(self):
         charge = self._charge(100, count=3)
         self.assertEqual(sum(charge.schedule_ids.mapped("amount")), 100)

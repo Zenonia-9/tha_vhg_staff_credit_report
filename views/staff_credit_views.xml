@@ -92,7 +92,7 @@
         <field name="name">Staff Credit Accounts</field><field name="res_model">tha.staff.credit.config</field>
         <field name="view_mode">list</field>
     </record>
-    <menuitem id="menu_staff_credit" name="Staff Credit" parent="account.menu_finance" sequence="65" groups="tha_vhg_staff_credit_report.group_reader"/>
+    <menuitem id="menu_staff_credit" name="Staff Credit" parent="tha_vhg_daily_cash_register.menu_other_reports" sequence="30" groups="tha_vhg_staff_credit_report.group_reader"/>
     <menuitem id="menu_register" name="Register" parent="menu_staff_credit" action="action_credit" sequence="10"/>
     <menuitem id="menu_config" name="Accounts" parent="menu_staff_credit" action="action_config" sequence="90" groups="tha_vhg_staff_credit_report.group_manager"/>
 </odoo>

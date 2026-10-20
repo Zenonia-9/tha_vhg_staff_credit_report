@@ -54,3 +54,14 @@ To inspect in Odoo: select the hospital company, then **Accounting > Staff Credi
 The browser-control connection timed out (`Emulation.setFocusEmulationEnabled` and `Page.navigate`). No approval was denied or bypassed. Authenticated HTTP/form/download checks succeeded, but browser clicks and client-side rendering were not verified. Multi-process allocation contention was not stress-tested; allocations serialize through configuration metadata to make competing database snapshots retry without modifying accounting balances.
 
 No live deployment or live historical import was performed. Live acceptance still needs the hospital workbook, staff-to-partner mapping, approved schedules, target GL detail and reporter confirmation. Company-currency-only source items are supported in v1. Preserve approved exports because historical metadata edits are audited, not immutable month-close snapshots.
+
+## Menu correction - 2026-10-20, version 19.0.1.0.5
+
+Investigation confirmed the Fixed Asset Register addon was uninstalled in THA. Staff Credit was installed and visible to admin, but belonged to the Invoicing app (`account.menu_finance`), while the shared Other Reports menu belongs to the Accounting app. Restored the existing Fixed Asset Register addon without modifying its source. Moved the Staff Credit parent to `tha_vhg_daily_cash_register.menu_other_reports` and declared that shared-menu addon as a dependency.
+
+Python/XML/manifest checks and the focused menu-visibility regression test passed (1 test, 0 failures/errors). After restart, authenticated `ir.ui.menu.load_menus` as admin verified these complete visible paths:
+
+- **Accounting > Reporting > Other Reports > Fixed Asset Register** (installed version 19.0.1.0.15).
+- **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report** (installed version 19.0.1.0.5).
+
+Staff Credit Register, Import and Accounts remain under the same Staff Credit parent with their existing access restrictions. Refresh an already-open browser session to load the updated menu tree. Validation log: `logs/staff_credit_menu_validation.log`.
