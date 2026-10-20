@@ -98,3 +98,9 @@ The final browser check caught missing column headings because the native header
 Python/XML syntax and Git whitespace checks passed. Upgraded THA; both focused native report and PDF/XLSX tests passed (0 failures/errors), then restarted `odoo_19`. The first validation attempt encountered the occupied 8069 port; the successful run used 8079. Log: `logs/staff_credit_header_validation.log`.
 
 Final screenshot in the existing Chrome tab confirms the requested text is absent and column headings are visible. Updated `artifacts/native_report_screen.png`. Project runtime logs show successful registry startup.
+
+### Report totals and GL section - version 19.0.1.1.5
+
+At the user's request, renamed **Filtered totals** to **Totals** and removed the company-wide GL reconciliation and unallocated-entry audit rows from the Monthly Report. Removed the dedicated GL amount column as well. Company account reconciliation remains available through Odoo's General Ledger report. Updated README to describe the current report behavior.
+
+Python AST syntax passed for 14 files and XML parsing passed for 7 files; `git diff --check` passed. THA upgraded successfully and `odoo_19` restarted; the project log shows the registry started and the existing Monthly Report URL returned HTTP 200. The browser-control screenshot call timed out, so the final visual state was not inspected in this turn.

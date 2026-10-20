@@ -33,7 +33,7 @@ Open **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report** 
 - **Actual** is the selected month's allocated credits; **Closing** subtracts them from Balance.
 - Status filters use **month-end** balance, not today's balance. Historical calculations use source accounting dates, not current reconciliation residuals.
 
-The screen, native XLSX and native A3 landscape PDF show the same charge rows, filtered totals and company-wide GL reconciliation. GL summary values use the dedicated **GL reconciliation amount** column. Search matches charge references, staff, department, descriptions, remarks and accounting references. Each charge's standard caret menu opens the Staff Credit record or its charge journal entry; **Register** opens the company's register. All monetary values use company currency and its rounding. Version 1 rejects source journal items with a different currency; foreign-currency schedules are out of scope. The older transient report/export APIs remain available for compatibility, but are no longer the Monthly Report menu's interface.
+The screen, native XLSX and native A3 landscape PDF show the same charge rows and **Totals** for the active filters. The report does not include a company-wide GL reconciliation; use the General Ledger report for account-level reconciliation. Search matches charge references, staff, department, descriptions, remarks and accounting references. Each charge's standard caret menu opens the Staff Credit record or its charge journal entry; **Register** opens the company's register. All monetary values use company currency and its rounding. Version 1 rejects source journal items with a different currency; foreign-currency schedules are out of scope. The older transient report/export APIs remain available for compatibility, but are no longer the Monthly Report menu's interface.
 
 ### Local examples (THA / Thukhasaytanar, October 2026)
 
@@ -43,17 +43,7 @@ The screen, native XLSX and native A3 landscape PDF show the same charge rows, f
 | DEMO new meals charge | 250,000 | 0 | 50,000 | 0 | 250,000 | 0/5 |
 | DEMO fully settled hospital bill | 120,000 | 120,000 | 0 | 0 | 0 | 2/2 |
 
-The first two charges belong to **DEMO Staff Credit Employee / Transport**. The settled charge belongs to **DEMO Staff Credit Finance Employee / Finance**. Try **Settled at month end** to show only the fully paid charge, then **Open at month end** for the other two. Use the caret beside a charge reference to inspect its schedule and actual settlement entries. Company GL reconciliation remains independent of these staff/status filters: opening 313,333 + additions 250,000 - reductions 50,000 = closing 513,333, with no GL difference or unallocated amounts. All examples use **SCDMO / STAFF CREDIT DEMO ONLY**, and no real staff/patient data.
-
-### Reconciliation
-
-Company-wide totals are deliberately independent of staff/category/status filters:
-
-`Opening + charges during month - reductions during month = register closing`
-
-`GL balance - register closing = unlinked debits - unapplied credits`
-
-Every nonzero unallocated source appears in the screen and Excel audit list, including partially allocated items. Unlinked and unmatched accounting items are never silently assigned. Reconcile to the source ledger with the same company, account, posted-only filter and month-end cutoff. A zero difference alone is insufficient if equal unlinked debits and unapplied credits offset; review both amounts.
+The first two charges belong to **DEMO Staff Credit Employee / Transport**. The settled charge belongs to **DEMO Staff Credit Finance Employee / Finance**. Try **Settled at month end** to show only the fully paid charge, then **Open at month end** for the other two. Use the caret beside a charge reference to inspect its schedule and actual settlement entries. All examples use **SCDMO / STAFF CREDIT DEMO ONLY**, and no real staff/patient data.
 
 Historical figures reflect current validated metadata and allocations applied to historical accounting dates. This is not an immutable month-close archive. Save approved monthly exports and restrict Manager access. Accounting changes require removing links first and then revalidating/relinking the affected records. Automated repayment reversals/refunds and changes to settled schedules are outside v1; correct mistaken links through the manager workflow and audit trail rather than entering negative allocations.
 

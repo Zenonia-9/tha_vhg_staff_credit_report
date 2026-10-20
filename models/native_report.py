@@ -136,24 +136,8 @@ class StaffCreditReportHandler(models.AbstractModel):
             line(row["name"], row, "tha.staff.credit", row["credit_id"], parent=header)
         if not data["rows"]:
             line(_("No staff charges match this month and these filters."), markup="staff_credit_empty", parent=header, section=True)
-        line(_("Filtered totals"), {key: sum(row[key] for row in data["rows"]) for key in
+        line(_("Totals"), {key: sum(row[key] for row in data["rows"]) for key in
              ("amount", "prior", "balance", "planned", "actual", "closing")}, markup="staff_credit_totals", total=True)
-        reconciliation = line(_("Company-wide GL reconciliation (independent of staff filters)"),
-                              markup="staff_credit_reconciliation", total=True, section=True)
-        for key, label in (
-            ("opening", _("Opening balance")), ("charges", _("New charges during month")),
-            ("reductions", _("Reductions during month")), ("closing", _("Closing balance")),
-            ("gl_balance", _("Posted GL balance")), ("difference", _("GL difference")),
-            ("unlinked_debits", _("Unlinked debits")), ("unapplied_credits", _("Unapplied credits")),
-        ):
-            line(label, {"gl_amount": data["summary"][key]}, markup="staff_credit_" + key, parent=reconciliation,
-                 total=key in ("closing", "difference"))
-        for row in data["audit"]:
-            line(_("Unallocated: %s", row["reference"]), {
-                "date": row["date"], "staff": row["partner"], "reference": row["reference"],
-                "remark": _("Unlinked debit: %(debit)s; unapplied credit: %(credit)s", debit=row["debit"], credit=row["credit"]),
-                "gl_amount": row["debit"] - row["credit"],
-            }, "account.move.line", row["source_line_id"], parent=reconciliation)
         return result
 
     def _caret_options_initializer(self):

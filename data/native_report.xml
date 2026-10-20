@@ -26,7 +26,6 @@
             <record id="native_column_closing" model="account.report.column"><field name="name">Closing balance</field><field name="expression_label">closing</field><field name="figure_type">monetary</field><field name="blank_if_zero" eval="False"/></record>
             <record id="native_column_remark" model="account.report.column"><field name="name">Remark</field><field name="expression_label">remark</field><field name="figure_type">string</field><field name="blank_if_zero" eval="False"/></record>
             <record id="native_column_reference" model="account.report.column"><field name="name">System reference</field><field name="expression_label">reference</field><field name="figure_type">string</field><field name="blank_if_zero" eval="False"/></record>
-            <record id="native_column_gl_amount" model="account.report.column"><field name="name">GL reconciliation amount</field><field name="expression_label">gl_amount</field><field name="figure_type">monetary</field><field name="blank_if_zero" eval="False"/></record>
         </field>
     </record>
     <record id="action_native_monthly_report" model="ir.actions.client">
@@ -45,7 +44,7 @@
                 <col style="width:7%"/><col style="width:13%"/><col style="width:6%"/>
                 <col style="width:6%"/><col style="width:6%"/><col style="width:6%"/>
                 <col style="width:3%"/><col style="width:6%"/><col style="width:6%"/>
-                <col style="width:9%"/><col style="width:7%"/><col style="width:6%"/>
+                <col style="width:15%"/><col style="width:7%"/>
             </colgroup>
         </xpath>
     </template>
