@@ -1,13 +1,13 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Tracks staff receivables against existing posted accounting entries, with an editable monthly plan, allocations, CSV validation and a native Odoo accounting report, like Profit and Loss and Balance Sheet. The report includes the standard toolbar, date navigation, search, PDF and XLSX exports. No report or register action creates entries, reconciles journal items, or runs payroll.
+Tracks staff receivables against existing posted accounting entries, with an editable monthly plan, allocations, spreadsheet validation and a native Odoo accounting report, like Profit and Loss and Balance Sheet. The report includes the standard toolbar, date navigation, search, PDF and XLSX exports. No report or register action creates entries, reconciles journal items, or runs payroll.
 
 ## Setup
 
 1. Install `tha_vhg_staff_credit_report` with dependencies `account`, `account_reports`, `hr`, `mail`, `tha_vhg_daily_cash_register` (shared Other Reports menu), and Python `xlsxwriter`.
 2. Assign **Staff Credit / Reader** or **Staff Credit / Manager** in user permissions. Admin initially receives Manager. Reader includes accounting read access; Manager adds register/configuration/import access, without granting payroll or private employee access.
 3. Select the hospital company. Open **Accounting > Reporting > Other Reports > Staff Credit > Accounts**, select the company and its reconcilable receivable account. The default looks up `130100` in that company's chart. Configuration is explicit: no company IDs or account IDs are hard-coded in business code.
-4. Ensure staff have employee records, departments, work contacts and a unique contact **Reference** for CSV imports. The register uses `hr.employee.public` to avoid private HR permissions. Archived staff remain reportable.
+4. Ensure staff have employee records, departments, work contacts and a unique contact **Reference** for spreadsheet imports. The register uses `hr.employee.public` to avoid private HR permissions. Archived staff remain reportable.
 
 ## Daily use
 
@@ -47,9 +47,9 @@ The first two charges belong to **DEMO Staff Credit Employee / Transport**. The 
 
 Historical figures reflect current validated metadata and allocations applied to historical accounting dates. This is not an immutable month-close archive. Save approved monthly exports and restrict Manager access. Accounting changes require removing links first and then revalidating/relinking the affected records. Automated repayment reversals/refunds and changes to settled schedules are outside v1; correct mistaken links through the manager workflow and audit trail rather than entering negative allocations.
 
-## CSV import
+## Excel import
 
-Download the UTF-8 CSV template from **Staff Credit > Import**. Replace example rows. The importer accepts up to 5,000 rows per file, in template column order. Amounts are plain decimals (no thousands separators). Dates are ISO `YYYY-MM-DD`.
+Download the Excel `.xlsx` template from **Staff Credit > Import**. It has an `Import` sheet for data and an `Instructions` sheet explaining the row types and workflow. Replace every example value; keep the exact column names and put charges first, schedule rows second, and settlements last. The importer accepts up to 5,000 data rows. Use plain numeric amounts without currency symbols or thousands separators, and ISO `YYYY-MM-DD` dates. Matching legacy UTF-8 CSV files are still accepted.
 
 - `charge` rows: unique `external_key`, staff work-contact Reference as `staff_identifier`, exact company department, charge date/category/description, posted move reference and journal code, line number, amount, start month and installment count. Category keys: `hospital`, `damage`, `penalty`, `meals`, `other`.
 - `schedule` rows: `external_key`, `due_date`, `amount`. An existing scheduled month is updated; a new month is added. Plan total/count must still match. To skip a generated month during bulk setup, edit that charge's schedule in the register before importing settlements.

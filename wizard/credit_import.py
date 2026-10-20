@@ -1,6 +1,12 @@
 import base64
 import csv
 import io
+import zipfile
+from datetime import date, datetime
+
+import xlsxwriter
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 from odoo import fields, models, _
 from odoo.exceptions import UserError, ValidationError
@@ -17,7 +23,7 @@ class ImportRollback(Exception):
 
 class CreditImport(models.TransientModel):
     _name = "tha.staff.credit.import"
-    _description = "Validate and Import Staff Credit CSV"
+    _description = "Validate and Import Staff Credit Workbook"
 
     company_id = fields.Many2one("res.company", required=True, default=lambda s: s.env.company)
     upload = fields.Binary(attachment=False)
@@ -32,10 +38,21 @@ class CreditImport(models.TransientModel):
 
     def action_template(self):
         self.ensure_one()
-        output = io.StringIO(newline="")
-        writer = csv.DictWriter(output, fieldnames=COLUMNS)
-        writer.writeheader()
-        writer.writerows([
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {"in_memory": True})
+        sheet = workbook.add_worksheet("Import")
+        header_format = workbook.add_format({"bold": True, "bg_color": "#49354F", "font_color": "#FFFFFF",
+                                             "text_wrap": True, "valign": "vcenter", "border": 1})
+        text_format = workbook.add_format({"num_format": "@"})
+        amount_format = workbook.add_format({"num_format": "0.00"})
+        sheet.freeze_panes(1, 0)
+        sheet.autofilter(0, 0, 5, len(COLUMNS) - 1)
+        sheet.set_row(0, 32)
+        widths = [14, 20, 20, 20, 14, 14, 30, 24, 14, 12, 14, 14, 18, 14, 28, 14]
+        for col, (name, width) in enumerate(zip(COLUMNS, widths)):
+            sheet.write(0, col, name, header_format)
+            sheet.set_column(col, col, width, text_format)
+        rows = [
             dict(row_type="charge", external_key="EXAMPLE-001", staff_identifier="STAFF-001",
                  department="Transport", charge_date="2026-03-26", category="hospital", description="Example only",
                  move_reference="MISC/2026/0001", journal_code="MISC", line_number=1, amount=470000,
@@ -45,9 +62,39 @@ class CreditImport(models.TransientModel):
             dict(row_type="schedule", external_key="EXAMPLE-001", due_date="2026-11-30", amount=156666),
             dict(row_type="settlement", external_key="EXAMPLE-001", move_reference="MISC/2026/0002",
                  journal_code="MISC", line_number=2, amount=156667, kind="repayment"),
-        ])
-        self.write({"template_data": base64.b64encode(output.getvalue().encode("utf-8-sig")),
-                    "template_name": "staff_credit_import.csv"})
+        ]
+        for row_number, row in enumerate(rows, 1):
+            for col, name in enumerate(COLUMNS):
+                value = row.get(name)
+                if value is None:
+                    continue
+                cell_format = amount_format if name == "amount" else text_format
+                if name == "line_number" or name == "installment_count":
+                    sheet.write_number(row_number, col, value)
+                elif name == "amount":
+                    sheet.write_number(row_number, col, value, cell_format)
+                else:
+                    sheet.write(row_number, col, value, cell_format)
+
+        instructions = workbook.add_worksheet("Instructions")
+        instructions.set_column("A:A", 24)
+        instructions.set_column("B:B", 105)
+        instructions.write_row(0, 0, ["Topic", "Instructions"], header_format)
+        notes = [
+            ("Before importing", "Replace every EXAMPLE value. Import metadata and links to existing posted accounting entries; this workbook never creates accounting entries."),
+            ("Row order", "Put all charge rows first, schedule rows second, and settlement rows last. Keep the exact column names in the Import sheet."),
+            ("charge", "One row per charge. Use the employee work-contact Reference, exact department name, posted debit entry reference, journal code and 1-based journal-item line number."),
+            ("schedule", "One row per planned installment. Use the same external_key as its charge, due_date in YYYY-MM-DD format, and amount. The amounts must total the charge."),
+            ("settlement", "One row per allocation to a charge. Link an existing posted credit entry and choose repayment, adjustment or reversal."),
+            ("Dates and amounts", "Use YYYY-MM-DD dates and plain numeric amounts. Do not type currency symbols or thousands separators."),
+            ("Validate only", "Checks the entire workbook and saves no register records."),
+            ("Validate and import", "Saves all valid rows together. If any row fails, the entire import is rolled back."),
+        ]
+        for row_number, values in enumerate(notes, 1):
+            instructions.write_row(row_number, 0, values)
+        workbook.close()
+        self.write({"template_data": base64.b64encode(output.getvalue()),
+                    "template_name": "staff_credit_import.xlsx"})
         return {"type": "ir.actions.act_url", "target": "self", "url":
                 "/web/content/%s/%s/template_data/%s?download=true" % (self._name, self.id, self.template_name)}
 
@@ -63,6 +110,40 @@ class CreditImport(models.TransientModel):
         if number < 1 or number > len(lines):
             raise ValidationError(_("Line number is outside this entry (number lines by journal item ID ascending)."))
         return lines[number - 1]
+
+    def _xlsx_rows(self, content):
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        try:
+            if "Import" not in workbook.sheetnames:
+                raise UserError(_("The Excel workbook must contain an Import sheet."))
+            sheet = workbook["Import"]
+            if sheet.max_row > 5001:
+                raise UserError(_("Import between 1 and 5000 rows per file."))
+            header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), ())
+            header = [self._cell_text(value) for value in header_row]
+            while header and not header[-1]:
+                header.pop()
+            if header != COLUMNS:
+                raise UserError(_("Excel columns must match the downloaded template exactly."))
+            rows = []
+            for values in sheet.iter_rows(min_row=2, max_col=len(COLUMNS), values_only=True):
+                if not any(value is not None for value in values):
+                    continue
+                rows.append({name: self._cell_text(values[index]) for index, name in enumerate(COLUMNS)})
+            return rows
+        finally:
+            workbook.close()
+
+    def _read_rows(self):
+        decoded = base64.b64decode(self.upload)
+        if (self.upload_name or "").lower().endswith(".csv"):
+            reader = csv.DictReader(io.StringIO(decoded.decode("utf-8-sig")))
+            if reader.fieldnames != COLUMNS:
+                raise UserError(_("CSV columns must match the downloaded template exactly."))
+            return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
+        if not (self.upload_name or "").lower().endswith(".xlsx"):
+            raise UserError(_("Upload an .xlsx Excel workbook or a .csv file."))
+        return self._xlsx_rows(decoded)
 
     def _employee(self, identifier):
         # Only public staff data is needed; identifier is the work contact's Reference.
@@ -122,15 +203,12 @@ class CreditImport(models.TransientModel):
         self.ensure_one()
         self.env["tha.staff.credit"].check_access("create")
         if self.company_id not in self.env.companies or not self.upload:
-            raise UserError(_("Select an allowed company and upload a CSV file."))
+            raise UserError(_("Select an allowed company and upload an Excel workbook."))
         try:
-            decoded = base64.b64decode(self.upload).decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(decoded))
-            if reader.fieldnames != COLUMNS:
-                raise UserError(_("CSV columns must match the downloaded template exactly."))
-            rows = [{k: (v or "").strip() for k, v in row.items()} for row in reader]
-        except (ValueError, UnicodeError, csv.Error) as error:
-            raise UserError(_("Invalid UTF-8 CSV: %s", str(error))) from error
+            rows = self._read_rows()
+        except (ValueError, UnicodeError, csv.Error, OSError, zipfile.BadZipFile,
+                InvalidFileException, KeyError, TypeError) as error:
+            raise UserError(_("Invalid Excel workbook or CSV file: %s", str(error))) from error
         if not rows or len(rows) > 5000:
             raise UserError(_("Import between 1 and 5000 rows per file."))
         errors, touched = [], self.env["tha.staff.credit"]
@@ -161,6 +239,18 @@ class CreditImport(models.TransientModel):
         self.result = ("No records imported.\n" + "\n".join(errors)) if errors else (
             "%s rows validated. %s" % (len(rows), "Preview only; no records saved." if dry_run else "Import complete."))
         return self._reopen()
+
+    @staticmethod
+    def _cell_text(value):
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value).strip()
 
     def action_validate(self):
         return self._run(True)

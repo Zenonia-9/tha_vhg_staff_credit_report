@@ -4,7 +4,7 @@
         <field name="name">tha.staff.credit.import.form</field><field name="model">tha.staff.credit.import</field>
         <field name="arch" type="xml">
         <form string="Import staff credit metadata">
-            <p>Use the UTF-8 CSV template. Staff identifier is the employee work contact's Reference. Line number is 1-based, ordered by journal item ID within the entry. Put charge rows first, schedule edits second, settlements last. Example rows must be replaced with real references.</p>
+            <p>Download and fill the Excel template (.xlsx). Staff identifier is the employee work contact's Reference. Line number is 1-based, ordered by journal item ID within the entry. Put charge rows first, schedule edits second, settlements last. Replace all example values with real references. CSV files matching the same columns are also accepted.</p>
             <group><field name="company_id"/><field name="upload" filename="upload_name"/><field name="upload_name" invisible="1"/></group>
             <button name="action_template" string="Download template" type="object"/>
             <field name="result" readonly="1"/>

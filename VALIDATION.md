@@ -104,3 +104,7 @@ Final screenshot in the existing Chrome tab confirms the requested text is absen
 At the user's request, renamed **Filtered totals** to **Totals** and removed the company-wide GL reconciliation and unallocated-entry audit rows from the Monthly Report. Removed the dedicated GL amount column as well. Company account reconciliation remains available through Odoo's General Ledger report. Updated README to describe the current report behavior.
 
 Python AST syntax passed for 14 files and XML parsing passed for 7 files; `git diff --check` passed. THA upgraded successfully and `odoo_19` restarted; the project log shows the registry started and the existing Monthly Report URL returned HTTP 200. The browser-control screenshot call timed out, so the final visual state was not inspected in this turn.
+
+### Excel import workbook - version 19.0.1.1.6
+
+The Import wizard now downloads a formatted `.xlsx` workbook with `Import` and `Instructions` sheets, reads Excel date and numeric cells, and accepts `.xlsx` uploads while retaining matching CSV compatibility. The upload limit, strict column order, row validation, and atomic import behavior are retained. Added `openpyxl` as a declared Python dependency. The template endpoint returned HTTP 200; the downloaded workbook opened successfully and contains both expected sheets, the exact import headers and five example rows. Direct visual browser verification of the updated wizard remains outstanding.
