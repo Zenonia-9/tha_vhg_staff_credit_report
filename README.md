@@ -1,10 +1,10 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Tracks staff receivables against existing posted accounting entries, with an editable monthly plan, allocations, CSV validation, screen reports, Excel and A3 landscape PDF. No report or register action creates entries, reconciles journal items, or runs payroll.
+Tracks staff receivables against existing posted accounting entries, with an editable monthly plan, allocations, CSV validation and a native Odoo accounting report, like Profit and Loss and Balance Sheet. The report includes the standard toolbar, date navigation, search, PDF and XLSX exports. No report or register action creates entries, reconciles journal items, or runs payroll.
 
 ## Setup
 
-1. Install `tha_vhg_staff_credit_report` with dependencies `account`, `hr`, `mail`, `tha_vhg_daily_cash_register` (shared Other Reports menu), and Python `xlsxwriter`.
+1. Install `tha_vhg_staff_credit_report` with dependencies `account`, `account_reports`, `hr`, `mail`, `tha_vhg_daily_cash_register` (shared Other Reports menu), and Python `xlsxwriter`.
 2. Assign **Staff Credit / Reader** or **Staff Credit / Manager** in user permissions. Admin initially receives Manager. Reader includes accounting read access; Manager adds register/configuration/import access, without granting payroll or private employee access.
 3. Select the hospital company. Open **Accounting > Reporting > Other Reports > Staff Credit > Accounts**, select the company and its reconcilable receivable account. The default looks up `130100` in that company's chart. Configuration is explicit: no company IDs or account IDs are hard-coded in business code.
 4. Ensure staff have employee records, departments, work contacts and a unique contact **Reference** for CSV imports. The register uses `hr.employee.public` to avoid private HR permissions. Archived staff remain reportable.
@@ -23,7 +23,7 @@ Linked entries are protected against draft/cancellation and accounting-source ed
 
 ## Monthly report
 
-Open **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report**, select a company/month, optionally staff/department/category/open-or-settled status, and refresh. Excel and PDF always recalculate from accounting links; refresh the on-screen preview after changing filters or allocations.
+Open **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report** (direct path `/odoo/staff-credit-monthly`). Select the company in Odoo's company selector and the month in the standard report date menu. Choose All Staff, All Departments, All Categories or All Statuses to filter; changes reload automatically. The report always uses the complete calendar month containing the selected end date. Select one company at a time. An unconfigured company displays an explanatory notice instead of an empty technical form. After an upgrade, refresh the browser once to replace cached menus/assets.
 
 - **100% Bill** includes charges posted by selected month-end, including new charges during the month.
 - **Prior settlements** are all allocated credits dated before the selected month, including classified adjustments/reversals.
@@ -33,7 +33,17 @@ Open **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report**,
 - **Actual** is the selected month's allocated credits; **Closing** subtracts them from Balance.
 - Status filters use **month-end** balance, not today's balance. Historical calculations use source accounting dates, not current reconciliation residuals.
 
-The screen and Excel detail show actual/closing amounts. Excel includes signed **Movements** and **GL Reconciliation** sheets; PDF prints the reference layout and the company reconciliation summary. All monetary values use company currency and its rounding. Version 1 rejects source journal items with a different currency; foreign-currency schedules are out of scope.
+The screen, native XLSX and native A3 landscape PDF show the same charge rows, filtered totals and company-wide GL reconciliation. GL summary values use the dedicated **GL reconciliation amount** column. Search matches charge references, staff, department, descriptions, remarks and accounting references. Each charge's standard caret menu opens the Staff Credit record or its charge journal entry; **Register** opens the company's register. All monetary values use company currency and its rounding. Version 1 rejects source journal items with a different currency; foreign-currency schedules are out of scope. The older transient report/export APIs remain available for compatibility, but are no longer the Monthly Report menu's interface.
+
+### Local examples (THA / Thukhasaytanar, October 2026)
+
+| Example | Charge | Settled through September | October planned | October actual | October closing | Times |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| DEMO hospital bill, partial payment | 470,000 | 156,667 | 156,667 | 50,000 | 263,333 | 1/3 |
+| DEMO new meals charge | 250,000 | 0 | 50,000 | 0 | 250,000 | 0/5 |
+| DEMO fully settled hospital bill | 120,000 | 120,000 | 0 | 0 | 0 | 2/2 |
+
+The first two charges belong to **DEMO Staff Credit Employee / Transport**. The settled charge belongs to **DEMO Staff Credit Finance Employee / Finance**. Try **Settled at month end** to show only the fully paid charge, then **Open at month end** for the other two. Use the caret beside a charge reference to inspect its schedule and actual settlement entries. Company GL reconciliation remains independent of these staff/status filters: opening 313,333 + additions 250,000 - reductions 50,000 = closing 513,333, with no GL difference or unallocated amounts. All examples use **SCDMO / STAFF CREDIT DEMO ONLY**, and no real staff/patient data.
 
 ### Reconciliation
 

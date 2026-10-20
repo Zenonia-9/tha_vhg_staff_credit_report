@@ -35,11 +35,11 @@ if not employee:
 employee.work_contact_id.ref = "SC-DEMO-STAFF"
 
 
-def move(key, amount, day, credit=False):
+def move(key, amount, day, credit=False, debtor=None):
     entry = env["account.move"].search([("journal_id", "=", journal.id), ("ref", "=", key)])
     if not entry:
         entry = env["account.move"].create({"journal_id": journal.id, "date": day, "ref": key,
-            "line_ids": [Command.create({"account_id": account.id, "partner_id": employee.work_contact_id.id,
+            "line_ids": [Command.create({"account_id": account.id, "partner_id": (debtor or employee.work_contact_id).id,
                 "date_maturity": day, "credit" if credit else "debit": amount}),
                 Command.create({"account_id": offset.id, "debit" if credit else "credit": amount})]})
         entry.action_post()
@@ -68,6 +68,28 @@ for key, amount, day, start, count, category in [
                     "source_line_id": move(key + "-" + suffix, settlement_amount, settlement_day, True).id,
                     "amount": settlement_amount, "kind": "repayment"})
 
+finance_department = env["hr.department"].search([("company_id", "=", company.id), ("name", "=", "DEMO Staff Credit Finance")])
+if not finance_department:
+    finance_department = env["hr.department"].create({"name": "DEMO Staff Credit Finance", "company_id": company.id})
+finance_employee = env["hr.employee"].search([("company_id", "=", company.id), ("name", "=", "DEMO Staff Credit Finance Employee")])
+if not finance_employee:
+    finance_employee = env["hr.employee"].create({"name": "DEMO Staff Credit Finance Employee", "company_id": company.id,
+        "department_id": finance_department.id})
+finance_employee.work_contact_id.ref = "SC-DEMO-FINANCE"
+closed = env["tha.staff.credit"].search([("company_id", "=", company.id), ("external_key", "=", "SC-DEMO-SETTLED")])
+if not closed:
+    closed = env["tha.staff.credit"].create({"company_id": company.id, "employee_id": finance_employee.id,
+        "partner_id": finance_employee.work_contact_id.id, "department_id": finance_department.id, "category": "hospital",
+        "description": "DEMO ONLY: Fully settled hospital bill - two installments", "charge_date": "2026-08-01",
+        "source_line_id": move("SC-DEMO-SETTLED", 120000, "2026-08-01", debtor=finance_employee.work_contact_id).id,
+        "amount": 120000, "start_month": "2026-08-01", "installment_count": 2, "external_key": "SC-DEMO-SETTLED",
+        "remark": "LOCAL TEST DATA - settled in full; compare Open and Settled report filters"})
+    closed.action_generate_schedule()
+    for suffix, day in [("AUG", "2026-08-31"), ("SEPT", "2026-09-30")]:
+        env["tha.staff.credit.allocation"].create({"credit_id": closed.id,
+            "source_line_id": move("SC-DEMO-SETTLED-" + suffix, 60000, day, True, finance_employee.work_contact_id).id,
+            "amount": 60000, "kind": "repayment"})
+
 wizard = env["tha.staff.credit.report"].create({"company_id": company.id, "month": "2026-10-01"})
 data = wizard._data()
 assert data["summary"]["difference"] == 0, data["summary"]
@@ -84,5 +106,12 @@ assert pdf.startswith(b"%PDF")
 evidence = {"company": company.name, "company_id": company.id, "report_id": wizard.id,
             "summary": data["summary"], "rows": data["rows"], "audit": data["audit"]}
 (output / "demo_validation.json").write_text(json.dumps(evidence, indent=2, default=str), encoding="utf-8")
+report = env.ref("tha_vhg_staff_credit_report.native_staff_credit_report").with_company(company)
+options = report.get_options({"date": {"date_from": "2026-10-01", "date_to": "2026-10-31", "filter": "custom", "mode": "range"}})
+native_lines = report._get_lines(options)
+assert len([line for line in native_lines if line.get("caret_options") == "tha.staff.credit"]) == 3
+(output / "staff_credit_native_oct_2026.xlsx").write_bytes(report.export_to_xlsx(options)["file_content"])
+(output / "staff_credit_native_oct_2026.pdf").write_bytes(report.dispatch_report_action(options, "export_to_pdf")["file_content"])
+(output / "native_validation.json").write_text(json.dumps({"options": options, "lines": native_lines}, indent=2, default=str), encoding="utf-8")
 env.cr.commit()
 print(json.dumps(evidence, default=str))

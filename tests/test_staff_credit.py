@@ -223,6 +223,57 @@ class TestStaffCredit(TransactionCase):
         self.assertIn(menu.id, visible[parent.id]["children"])
         self.assertEqual(visible[menu.id]["app_id"], visible[parent.id]["app_id"])
 
+    def _native_options(self, **previous):
+        report = self.env.ref("tha_vhg_staff_credit_report.native_staff_credit_report")
+        options = {"date": {"date_from": "2026-10-01", "date_to": "2026-10-31", "mode": "range", "filter": "custom"},
+                   "staff_credit_employee": [{"id": self.employee.id, "selected": True}]}
+        options.update(previous)
+        return report, report.get_options(options)
+
+    def test_native_report_matches_register_and_opens_charge(self):
+        charge = self._charge(300)
+        self._settle(charge, 100)
+        report, options = self._native_options()
+        lines = report._get_lines(options)
+        row = next(line for line in lines if line.get("caret_options") == "tha.staff.credit")
+        values = {cell["expression_label"]: cell["no_format"] for cell in row["columns"]}
+        self.assertEqual((values["amount"], values["prior"], values["balance"], values["planned"], values["times"]),
+                         (300, 100, 200, 100, "1/3"))
+        self.assertEqual(options["date"]["date_from"], "2026-10-01")
+        self.assertEqual(report.dispatch_report_action(options, "open_staff_credit", {"line_id": row["id"]})["res_id"], charge.id)
+        action = self.env.ref("tha_vhg_staff_credit_report.menu_monthly_report").action
+        self.assertEqual((action._name, action.tag), ("ir.actions.client", "account_report"))
+        self.assertEqual(report.get_report_information(options)["lines"], lines)
+
+    def test_native_status_department_search_and_cutoff(self):
+        charge = self._charge(300)
+        self._settle(charge, 300, "2026-11-30")
+        report, options = self._native_options(staff_credit_status=[{"id": "open", "selected": True}],
+            staff_credit_department=[{"id": self.department.id, "selected": True}], filter_search_bar="patient")
+        self.assertEqual(len([line for line in report._get_lines(options) if line.get("caret_options") == "tha.staff.credit"]), 1)
+        report, options = self._native_options(staff_credit_status=[{"id": "settled", "selected": True}])
+        self.assertFalse([line for line in report._get_lines(options) if line.get("caret_options") == "tha.staff.credit"])
+
+    def test_native_unconfigured_company_and_access(self):
+        other = self.env["res.company"].search([("id", "!=", self.company.id)], limit=1)
+        report = self.env.ref("tha_vhg_staff_credit_report.native_staff_credit_report").with_context(allowed_company_ids=other.ids)
+        options = report.get_options({})
+        self.assertIn("No Staff Credit account", options["staff_credit_notice"])
+        self.assertTrue(report._get_lines(options))
+        user = self.env["res.users"].create({"name": "Native report outsider TEST", "login": "native-credit-outsider-test",
+            "company_id": self.company.id, "company_ids": [Command.set([self.company.id])],
+            "group_ids": [Command.set([self.env.ref("account.group_account_readonly").id])]})
+        with self.assertRaises(AccessError):
+            self.env.ref("tha_vhg_staff_credit_report.native_staff_credit_report").with_user(user).get_options({})
+
+    def test_native_pdf_xlsx_exports(self):
+        self._charge(300)
+        report, options = self._native_options()
+        with zipfile.ZipFile(io.BytesIO(report.export_to_xlsx(options)["file_content"])) as archive:
+            self.assertIn("300", archive.read("xl/worksheets/sheet1.xml").decode())
+        pdf = report.with_context(force_report_rendering=True).dispatch_report_action(options, "export_to_pdf")["file_content"]
+        self.assertTrue(pdf.startswith(b"%PDF"))
+
     def test_rounding_and_reports_do_not_post_accounting(self):
         charge = self._charge(100, count=3)
         self.assertEqual(sum(charge.schedule_ids.mapped("amount")), 100)

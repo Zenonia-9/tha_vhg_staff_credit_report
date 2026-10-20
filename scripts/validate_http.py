@@ -65,6 +65,31 @@ pdf = session.get(url + "/report/pdf/tha_vhg_staff_credit_report.monthly_pdf/" +
                   params={"context": json.dumps(context)}, timeout=90)
 pdf.raise_for_status()
 assert pdf.content.startswith(b"%PDF"), "Report endpoint did not return PDF"
+native_ids = call("account.report", "search", [[("custom_handler_model_name", "=", "tha.staff.credit.report.handler")]], context=context)
+assert len(native_ids) == 1
+native_id = native_ids[0]
+native_options = call("account.report", "get_options", [[native_id], {
+    "date": {"date_from": "2026-10-01", "date_to": "2026-10-31", "mode": "range", "filter": "custom"},
+}], context=context)
+native_info = call("account.report", "get_report_information", [[native_id], native_options], context=context)
+native_rows = [line for line in native_info["lines"] if line.get("caret_options") == "tha.staff.credit"]
+assert len(native_rows) == 3
+for choice in native_options["staff_credit_status"]:
+    choice["selected"] = choice["id"] == "settled"
+settled_options = call("account.report", "get_options", [[native_id], native_options], context=context)
+settled_info = call("account.report", "get_report_information", [[native_id], settled_options], context=context)
+settled_rows = [line for line in settled_info["lines"] if line.get("caret_options") == "tha.staff.credit"]
+assert len(settled_rows) == 1
+assert next(cell["no_format"] for cell in settled_rows[0]["columns"] if cell.get("expression_label") == "times") == "2/2"
+for choice in native_options["staff_credit_status"]:
+    choice["selected"] = False
+for kind, signature in (("pdf", b"%PDF"), ("xlsx", b"PK")):
+    exported = session.post(url + "/account_reports", data={"options": json.dumps(native_options),
+        "file_generator": "export_to_" + kind}, timeout=90)
+    exported.raise_for_status()
+    assert exported.content.startswith(signature), "Native download failed: " + kind
 print(json.dumps({"authenticated_user_id": auth["result"]["uid"], "report_id": report,
                   "forms": "register/report/import loaded", "snapshot": snapshot,
-                  "excel_bytes": len(download.content), "pdf_bytes": len(pdf.content)}))
+                  "excel_bytes": len(download.content), "pdf_bytes": len(pdf.content),
+                  "native_report_id": native_id, "native_rows": len(native_rows),
+                  "native_settled_rows": len(settled_rows), "native_downloads": "PDF and XLSX passed"}))

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="tha_vhg_staff_credit_report.NativeFilters"
+       t-inherit="account_reports.AccountReportFiltersCustomizable" t-inherit-mode="primary">
+        <xpath expr="//div[@id='filter_date']" position="after">
+            <t t-foreach="creditFilterDefinitions" t-as="filter" t-key="filter.key">
+                <div class="filter_staff_credit">
+                    <Dropdown>
+                        <button class="btn btn-secondary">
+                            <i t-att-class="'fa ' + filter.icon + ' me-1'"/>
+                            <t t-out="creditFilterLabel(filter.key, filter.label)"/>
+                        </button>
+                        <t t-set-slot="content">
+                            <DropdownItem onSelected="() => this.selectCreditFilter(filter.key, false)" t-out="filter.label"/>
+                            <t t-foreach="controller.cachedFilterOptions[filter.key]" t-as="choice" t-key="choice.id">
+                                <DropdownItem class="{selected: choice.selected}"
+                                              onSelected="() => this.selectCreditFilter(filter.key, choice.id)"
+                                              t-out="choice.name"/>
+                            </t>
+                        </t>
+                    </Dropdown>
+                </div>
+            </t>
+            <div class="text-muted small w-100 mt-1" t-out="controller.options.staff_credit_notice"/>
+        </xpath>
+    </t>
+</templates>

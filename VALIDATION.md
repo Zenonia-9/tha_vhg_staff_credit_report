@@ -65,3 +65,24 @@ Python/XML/manifest checks and the focused menu-visibility regression test passe
 - **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report** (installed version 19.0.1.0.5).
 
 Staff Credit Register, Import and Accounts remain under the same Staff Credit parent with their existing access restrictions. Refresh an already-open browser session to load the updated menu tree. Validation log: `logs/staff_credit_menu_validation.log`.
+
+## Native accounting report - 2026-10-20, version 19.0.1.1.2
+
+Monthly Report now opens a native `account.report` client action, with the same accounting-report framework used by P&L and Balance Sheet. The charge register and existing transient export APIs remain intact. New report definition, handler and scoped OWL filter component provide the standard PDF/XLSX toolbar, month navigation, search, staff/department/category/status selectors, charge/source caret actions and company-wide GL reconciliation. Selecting an unconfigured company displays a clear notice. A complete calendar month is used, based on the selected end date, and only one company is reported at a time.
+
+The native handler reuses the validated register calculations through an unsaved transient object. Native PDF export uses the native report template and renderer with A3 landscape paper and scoped fixed table widths, so all columns fit; other accounting reports are unaffected.
+
+Checks completed:
+
+- Python AST (14 files), XML (7 files), manifest data/assets paths, JavaScript `node --check`, and Git whitespace checks passed.
+- Full focused suite: **18 tests, 0 failures, 0 errors**. This includes native values, historical cutoff, status/department/search filters, access checks, native menu action, drill-down, and both export formats.
+- After the final PDF base-URL adjustment, the focused native PDF/XLSX regression passed again (1 test, 0 failures/errors). Odoo was upgraded and restarted.
+- Authenticated native report requests as ordinary admin returned three demo rows; the Settled filter returned one row with Times `2/2`. Standard `/account_reports` PDF and XLSX downloads passed signature checks. Earlier transient endpoints still passed compatibility checks.
+- Browser verification used the user's existing Chrome tab, originally `http://localhost:8019/odoo/action-1481?debug=1`, and left it on `/odoo/staff-credit-monthly?debug=1` in Thukhasaytanar. Verified the native toolbar/filter controls, the three charge rows and the Settled-only result, then restored All Statuses. Saved `artifacts/native_report_screen.png`. This resolves the earlier browser-verification gap for the new Monthly Report interface.
+- Rendered the final native PDF with Poppler and visually inspected the A3 landscape page. All fourteen data columns plus the charge reference, all three examples, totals and GL reconciliation values fit without horizontal clipping.
+
+The local demo now has **three charges**: existing partial-payment hospital bill (470,000), current-month meals charge (250,000), and a new fully settled hospital bill (120,000). The settled charge, key `SC-DEMO-SETTLED`, belongs to **DEMO Staff Credit Finance Employee / Finance**; two posted 60,000 installments in August and September clear it completely. Its debit and credits offset, so October's company-wide closing remains **513,333 MMK**, with zero GL difference, unlinked debits or unapplied credits. The seeder remains idempotent and restricted to THA.
+
+Additional Git-ignored artifacts: `staff_credit_native_oct_2026.pdf`, `.xlsx`, `.png`, `native_validation.json`, `native_report_screen.png` and the updated `http_validation.json`. Test log: `logs/staff_credit_native_validation.log`.
+
+Live rollout, historical data mapping and reporter acceptance remain outstanding. The wide screen table uses native horizontal scrolling; the GL reconciliation amount is its last column. The standard native unposted-entry banner may also appear for other draft accounting entries in the selected company; Staff Credit calculations continue to include posted linked entries only.
