@@ -58,7 +58,7 @@ class StaffCreditReportHandler(models.AbstractModel):
         elif not self.env["tha.staff.credit.config"].search_count([("company_id", "=", company.id)]):
             notice = _("No Staff Credit account configured for %s. Select the hospital company to see the local examples, or configure an account in Staff Credit > Accounts.", company.name)
         else:
-            notice = _("Monthly amounts are planned deductions. Times counts paid installments through the previous month. GL reconciliation always covers the entire company account.")
+            notice = ""
         options["staff_credit_notice"] = notice
         options["custom_display_config"].update({
             "templates": {"AccountReportFilters": "tha_vhg_staff_credit_report.NativeFilters"},

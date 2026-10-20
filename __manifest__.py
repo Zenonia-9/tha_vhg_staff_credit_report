@@ -1,6 +1,6 @@
 {
     "name": "VHG Staff Credit Report",
-    "version": "19.0.1.1.2",
+    "version": "19.0.1.1.3",
     "summary": "Staff credit register, monthly deductions and GL reconciliation",
     "author": "Thein Htoo Aung",
     "license": "LGPL-3",

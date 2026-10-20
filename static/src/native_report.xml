@@ -21,7 +21,7 @@
                     </Dropdown>
                 </div>
             </t>
-            <div class="text-muted small w-100 mt-1" t-out="controller.options.staff_credit_notice"/>
+            <div t-if="controller.options.staff_credit_notice" class="text-muted small w-100 mt-1" t-out="controller.options.staff_credit_notice"/>
         </xpath>
     </t>
 </templates>

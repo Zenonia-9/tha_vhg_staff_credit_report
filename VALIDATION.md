@@ -86,3 +86,7 @@ The local demo now has **three charges**: existing partial-payment hospital bill
 Additional Git-ignored artifacts: `staff_credit_native_oct_2026.pdf`, `.xlsx`, `.png`, `native_validation.json`, `native_report_screen.png` and the updated `http_validation.json`. Test log: `logs/staff_credit_native_validation.log`.
 
 Live rollout, historical data mapping and reporter acceptance remain outstanding. The wide screen table uses native horizontal scrolling; the GL reconciliation amount is its last column. The standard native unposted-entry banner may also appear for other draft accounting entries in the selected company; Staff Credit calculations continue to include posted linked entries only.
+
+### Toolbar text removal - version 19.0.1.1.3
+
+Removed the routine explanatory sentence beneath the native report filters at the user's request. The notice element is conditional, so configured companies have no empty notice row; actionable company-selection/account-configuration notices remain available. The standard Odoo unposted-entry banner is unchanged.
