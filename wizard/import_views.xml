@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_credit_import" model="ir.ui.view">
+        <field name="name">tha.staff.credit.import.form</field><field name="model">tha.staff.credit.import</field>
+        <field name="arch" type="xml">
+        <form string="Import staff credit metadata">
+            <p>Use the UTF-8 CSV template. Staff identifier is the employee work contact's Reference. Line number is 1-based, ordered by journal item ID within the entry. Put charge rows first, schedule edits second, settlements last. Example rows must be replaced with real references.</p>
+            <group><field name="company_id"/><field name="upload" filename="upload_name"/><field name="upload_name" invisible="1"/></group>
+            <button name="action_template" string="Download template" type="object"/>
+            <field name="result" readonly="1"/>
+            <footer><button name="action_validate" string="Validate only" type="object"/><button name="action_import" string="Validate and import" type="object" class="btn-primary"/><button string="Close" special="cancel"/></footer>
+        </form></field>
+    </record>
+    <record id="action_credit_import" model="ir.actions.act_window">
+        <field name="name">Import Staff Credit</field><field name="res_model">tha.staff.credit.import</field>
+        <field name="view_mode">form</field><field name="target">new</field>
+    </record>
+    <menuitem id="menu_credit_import" name="Import" parent="menu_staff_credit" action="action_credit_import" sequence="30" groups="tha_vhg_staff_credit_report.group_manager"/>
+</odoo>

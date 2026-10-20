@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="paperformat_credit" model="report.paperformat">
+        <field name="name">Staff Credit A3 Landscape</field><field name="format">A3</field>
+        <field name="orientation">Landscape</field><field name="margin_top">12</field>
+        <field name="margin_bottom">12</field><field name="margin_left">8</field><field name="margin_right">8</field>
+        <field name="header_spacing">5</field><field name="dpi">90</field>
+    </record>
+    <record id="action_report_pdf" model="ir.actions.report">
+        <field name="name">Staff Credit Report</field><field name="model">tha.staff.credit.report</field>
+        <field name="report_type">qweb-pdf</field><field name="report_name">tha_vhg_staff_credit_report.monthly_pdf</field>
+        <field name="paperformat_id" ref="paperformat_credit"/>
+        <field name="group_ids" eval="[(4, ref('group_reader'))]"/>
+    </record>
+    <template id="monthly_pdf">
+        <t t-call="web.html_container">
+            <t t-foreach="reports" t-as="pair">
+                <t t-set="o" t-value="pair[0]"/><t t-set="data" t-value="pair[1]"/>
+                <t t-set="company" t-value="o.company_id"/>
+                <div class="article" t-att-data-oe-model="o._name" t-att-data-oe-id="o.id">
+                    <div class="page" style="font-size:12px;">
+                        <h3><span t-out="o.company_id.name"/> — Staff Credit — <span t-out="data['month_label']"/></h3>
+                        <p>Currency: <span t-out="o.currency_id.name"/>. Monthly amount is planned. Balance is before the selected month's deductions. Times: fully paid installments through the previous month / total.</p>
+                        <p>Filters: Staff <span t-out="o.employee_id.name or 'All'"/>; Department <span t-out="o.department_id.name or 'All'"/>; Category <span t-out="o.category or 'All'"/>; Status <span t-out="o.status"/>.</p>
+                        <style>
+                            .sc-table { width:100%; table-layout:fixed; border-collapse:collapse; }
+                            .sc-table th, .sc-table td { border:1px solid #888; padding:5px; overflow-wrap:break-word; word-wrap:break-word; vertical-align:top; }
+                            .sc-table th { background:#deeaf6; } .sc-table thead { display:table-header-group; }
+                            .sc-table tr { page-break-inside:avoid; } .sc-number { text-align:right; }
+                        </style>
+                        <table class="sc-table">
+                            <thead><tr>
+                                <th style="width:7%">No</th><th style="width:5%">Date</th><th style="width:8%">Staff name</th><th style="width:7%">Department</th>
+                                <th style="width:20%">Name (Patient &amp; Others)</th><th style="width:7%">100% Bill</th>
+                                <th style="width:8%">Settlement up to <span t-out="data['previous_label']"/></th>
+                                <th style="width:7%">Balance</th><th style="width:7%"><span t-out="data['month_label']"/> planned</th>
+                                <th style="width:4%">Times</th><th style="width:11%">Remark</th><th style="width:9%">System Reference</th>
+                            </tr></thead>
+                            <tbody><tr t-foreach="data['rows']" t-as="r">
+                                <td><span t-out="r['name']"/></td><td><span t-out="r['date'].strftime('%d-%b-%y')"/></td>
+                                <td><span t-out="r['staff']"/></td><td><span t-out="r['department']"/></td><td><span t-out="r['description']"/></td>
+                                <td class="sc-number"><span t-out="'{:,.2f}'.format(r['amount'])"/></td>
+                                <td class="sc-number"><span t-out="'{:,.2f}'.format(r['prior'])"/></td>
+                                <td class="sc-number"><span t-out="'{:,.2f}'.format(r['balance'])"/></td>
+                                <td class="sc-number"><span t-out="'{:,.2f}'.format(r['planned'])"/></td>
+                                <td><span t-out="r['times']"/></td><td><span t-out="r['remark']"/></td><td><span t-out="r['reference']"/></td>
+                            </tr>
+                            <tr><td colspan="5">Filtered totals</td>
+                                <td class="sc-number" t-foreach="['amount','prior','balance','planned']" t-as="key"><span t-out="'{:,.2f}'.format(sum(r[key] for r in data['rows']))"/></td>
+                                <td colspan="3"/>
+                            </tr></tbody>
+                        </table>
+                        <h4 style="margin-top:18px;">Company-wide GL reconciliation (independent of report filters)</h4>
+                        <p>Opening <span t-out="'{:,.2f}'.format(data['summary']['opening'])"/> + Charges <span t-out="'{:,.2f}'.format(data['summary']['charges'])"/> − Reductions <span t-out="'{:,.2f}'.format(data['summary']['reductions'])"/> = Closing <span t-out="'{:,.2f}'.format(data['summary']['closing'])"/>.</p>
+                        <p>GL balance: <span t-out="'{:,.2f}'.format(data['summary']['gl_balance'])"/>; Difference: <strong t-out="'{:,.2f}'.format(data['summary']['difference'])"/>; Unlinked debits: <span t-out="'{:,.2f}'.format(data['summary']['unlinked_debits'])"/>; Unapplied credits: <span t-out="'{:,.2f}'.format(data['summary']['unapplied_credits'])"/>.</p>
+                        <p t-if="data['audit']">Review the journal-item differences in the screen or Excel GL Reconciliation sheet before treating this as a complete staff breakdown.</p>
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>
