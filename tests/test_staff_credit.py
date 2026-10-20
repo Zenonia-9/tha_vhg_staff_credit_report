@@ -235,6 +235,8 @@ class TestStaffCredit(TransactionCase):
         self._settle(charge, 100)
         report, options = self._native_options()
         lines = report._get_lines(options)
+        self.assertEqual(len(lines[0]["columns"]), len(options["columns"]),
+                         "The native header derives its column labels from the first row")
         row = next(line for line in lines if line.get("caret_options") == "tha.staff.credit")
         values = {cell["expression_label"]: cell["no_format"] for cell in row["columns"]}
         self.assertEqual((values["amount"], values["prior"], values["balance"], values["planned"], values["times"]),

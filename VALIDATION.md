@@ -90,3 +90,11 @@ Live rollout, historical data mapping and reporter acceptance remain outstanding
 ### Toolbar text removal - version 19.0.1.1.3
 
 Removed the routine explanatory sentence beneath the native report filters at the user's request. The notice element is conditional, so configured companies have no empty notice row; actionable company-selection/account-configuration notices remain available. The standard Odoo unposted-entry banner is unchanged.
+
+### Native column headings - version 19.0.1.1.4
+
+The final browser check caught missing column headings because the native header reads columns from the first section row. Retain its column cells on screen and use spanning section rows only in print exports. Added a regression assertion for the native header contract.
+
+Python/XML syntax and Git whitespace checks passed. Upgraded THA; both focused native report and PDF/XLSX tests passed (0 failures/errors), then restarted `odoo_19`. The first validation attempt encountered the occupied 8069 port; the successful run used 8079. Log: `logs/staff_credit_header_validation.log`.
+
+Final screenshot in the existing Chrome tab confirms the requested text is absent and column headings are visible. Updated `artifacts/native_report_screen.png`. Project runtime logs show successful registry startup.

@@ -117,7 +117,8 @@ class StaffCreditReportHandler(models.AbstractModel):
                 row["parent_id"] = parent
             if total:
                 row["class"] = "fw-bold"
-            if section:
+            # The browser derives column headings from the first row's columns.
+            if section and options.get("export_mode") == "print":
                 row["colspan"] = len(options["columns"]) + 1
                 row["columns"] = []
             if model == "tha.staff.credit":
