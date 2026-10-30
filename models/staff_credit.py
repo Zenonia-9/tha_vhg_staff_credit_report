@@ -1,359 +1,319 @@
 from dateutil.relativedelta import relativedelta
 
-from odoo import api, fields, models, Command, _
-from odoo.exceptions import ValidationError, UserError
+from odoo import Command, api, fields, models, _
+from odoo.exceptions import AccessError, UserError, ValidationError
 
-
-CATEGORIES = [(key, label) for key, label in (
-    ("hospital", "Hospital bill"), ("damage", "Damage"),
-    ("penalty", "Penalty"), ("meals", "Meals"), ("other", "Other"),
-)]
-
-
-def lock_sources(env, lines):
-    """Serialize company allocation checks, including repeatable-read transactions.
-
-    Updating only configuration metadata ensures competing snapshots are retried;
-    journal items and their accounting balances are never updated here.
-    """
-    if lines:
-        configs = env["tha.staff.credit.config"].search([
-            ("company_id", "in", lines.company_id.ids)], order="id")
-        if configs:
-            env.cr.execute("SELECT id FROM tha_staff_credit_config WHERE id IN %s ORDER BY id FOR UPDATE", [tuple(configs.ids)])
-            configs.invalidate_recordset(["allocation_revision"])
-            for config in configs:
-                config.write({"allocation_revision": config.allocation_revision + 1})
+CATEGORIES = [('hospital', 'Hospital bill'), ('damage', 'Damage'), ('penalty', 'Penalty'),
+              ('meals', 'Meals'), ('other', 'Other')]
 
 
 class CreditConfig(models.Model):
-    _name = "tha.staff.credit.config"
-    _description = "Staff Credit Account Configuration"
+    _name = 'tha.staff.credit.config'
+    _description = 'Staff Credit Settings'
     _check_company_auto = True
 
-    company_id = fields.Many2one("res.company", required=True, default=lambda s: s.env.company)
-    account_id = fields.Many2one("account.account", required=True, check_company=True,
-                                domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable')]")
-    currency_id = fields.Many2one(related="company_id.currency_id")
-    allocation_revision = fields.Integer(readonly=True, copy=False)
-    _company_unique = models.Constraint("UNIQUE(company_id)", "Configure one account per company.")
+    company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
+    account_id = fields.Many2one('account.account', required=True, check_company=True, string='Staff Credit account')
+    salary_account_id = fields.Many2one('account.account', required=True, check_company=True, string='Salary expense account')
+    journal_id = fields.Many2one('account.journal', required=True, check_company=True,
+                                 domain="[('company_id', '=', company_id), ('type', '=', 'general')]")
+    revision = fields.Integer(default=0, readonly=True)
+    _company_unique = models.Constraint('UNIQUE(company_id)', 'Configure each company only once.')
 
     @api.model
     def default_get(self, names):
         values = super().default_get(names)
-        company = self.env["res.company"].browse(values.get("company_id", self.env.company.id))
-        account = self.env["account.account"].with_company(company).search([
-            ("company_ids", "in", company.id), ("code", "=", "130100"),
-            ("account_type", "=", "asset_receivable"), ("reconcile", "=", True),
-        ], limit=1)
-        if "account_id" in names:
-            values["account_id"] = account.id
+        company = self.env['res.company'].browse(values.get('company_id', self.env.company.id))
+        for field, code in (('account_id', '130100'), ('salary_account_id', '701010')):
+            if field in names:
+                values[field] = self.env['account.account'].search([
+                    ('company_ids', 'in', company.id), ('code', '=', code)], limit=1).id
         return values
 
-    @api.constrains("account_id", "company_id")
-    def _check_account(self):
-        for record in self:
-            if (record.company_id not in record.account_id.company_ids
-                    or record.account_id.account_type != "asset_receivable" or not record.account_id.reconcile):
-                raise ValidationError(_("Use a reconcilable receivable account belonging to this company."))
-            credits = self.env["tha.staff.credit"].search([("company_id", "=", record.company_id.id)])
-            if any(c.source_line_id.account_id != record.account_id for c in credits):
-                raise ValidationError(_("The configured account cannot change while linked charges use another account."))
+    @api.constrains('company_id', 'account_id', 'salary_account_id', 'journal_id')
+    def _check_settings(self):
+        for config in self:
+            if (config.company_id not in config.account_id.company_ids
+                    or config.account_id.account_type != 'asset_receivable' or not config.account_id.reconcile
+                    or config.company_id not in config.salary_account_id.company_ids
+                    or config.salary_account_id.account_type not in ('expense', 'expense_direct_cost')
+                    or config.journal_id.company_id != config.company_id or config.journal_id.type != 'general'
+                    or not config.account_id.active or not config.salary_account_id.active
+                    or (config.journal_id.currency_id and config.journal_id.currency_id != config.company_id.currency_id)):
+                raise ValidationError(_('Select an active reconcilable receivable, salary expense account and general journal in this company.'))
+            if self.env['tha.staff.credit'].search_count([
+                    ('company_id', '=', config.company_id.id), ('source_line_id.account_id', '!=', config.account_id.id)]):
+                raise ValidationError(_('Existing bill links use another Staff Credit account.'))
 
-    def unlink(self):
-        if self.env["tha.staff.credit"].search_count([("company_id", "in", self.company_id.ids)]):
-            raise UserError(_("Configuration is required by existing staff credit records."))
-        return super().unlink()
+    def _serialize(self):
+        # An ORM write serializes competing allocations and causes stale
+        # repeatable-read snapshots to retry before they can double allocate.
+        for config in self.sorted('id'):
+            config.write({'revision': config.revision + 1})
 
     def write(self, values):
-        if "company_id" in values:
-            changing = self.filtered(lambda c: c.company_id.id != values["company_id"])
-            if self.env["tha.staff.credit"].search_count([("company_id", "in", changing.company_id.ids)]):
-                raise UserError(_("Configuration cannot move to another company while charges exist."))
+        if 'company_id' in values and any(c.company_id.id != values['company_id'] for c in self):
+            raise UserError(_('Create separate settings for another company.'))
         return super().write(values)
+
+    def unlink(self):
+        if self.env['tha.staff.credit'].search_count([('company_id', 'in', self.company_id.ids)]):
+            raise UserError(_('Settings are required by existing staff bills.'))
+        return super().unlink()
 
 
 class StaffCredit(models.Model):
-    _name = "tha.staff.credit"
-    _description = "Staff Credit Charge"
-    _inherit = ["mail.thread", "mail.activity.mixin"]
-    _order = "charge_date, id"
+    _name = 'tha.staff.credit'
+    _description = 'Staff Credit Bill'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+    _order = 'charge_date, id'
     _check_company_auto = True
 
-    name = fields.Char(required=True, default="New", copy=False, tracking=True)
-    external_key = fields.Char(string="Import key", copy=False, index=True)
-    company_id = fields.Many2one("res.company", required=True, default=lambda s: s.env.company)
-    currency_id = fields.Many2one(related="company_id.currency_id")
-    employee_id = fields.Many2one("hr.employee.public", required=True, check_company=True, tracking=True)
-    partner_id = fields.Many2one("res.partner", required=True, check_company=True, tracking=True)
-    department_id = fields.Many2one("hr.department", required=True, check_company=True, tracking=True)
+    name = fields.Char(default='New', required=True, copy=False, readonly=True)
+    company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
+    currency_id = fields.Many2one(related='company_id.currency_id')
+    employee_id = fields.Many2one('hr.employee.public', required=True, check_company=True, tracking=True)
+    department_id = fields.Many2one('hr.department', required=True, check_company=True, tracking=True)
+    partner_id = fields.Many2one('res.partner', required=True, check_company=True, tracking=True)
+    source_move_id = fields.Many2one('account.move', required=True, check_company=True, ondelete='restrict',
+                                    string='Original invoice / entry', tracking=True,
+                                    domain="[('company_id', '=', company_id), ('state', '=', 'posted')]")
+    source_line_id = fields.Many2one('account.move.line', required=True, check_company=True, ondelete='restrict',
+                                    string='Staff Credit debit item', tracking=True,
+                                    domain="[('move_id', '=', source_move_id), ('debit', '>', 0)]")
     charge_date = fields.Date(required=True, tracking=True)
-    category = fields.Selection(CATEGORIES, required=True, default="hospital", tracking=True)
-    description = fields.Char(required=True, tracking=True)
+    description = fields.Char(required=True, tracking=True, string='Patient / other description')
+    category = fields.Selection(CATEGORIES, default='hospital', required=True)
+    amount = fields.Monetary(required=True, tracking=True, string='100% Bill')
+    anzer_reference = fields.Char(tracking=True, string='Anzer System invoice')
     remark = fields.Text(tracking=True)
-    source_line_id = fields.Many2one("account.move.line", required=True, check_company=True,
-                                    ondelete="restrict", tracking=True,
-                                    domain="[('company_id', '=', company_id), ('parent_state', '=', 'posted'), ('debit', '>', 0)]")
-    source_move_id = fields.Many2one(related="source_line_id.move_id")
-    amount = fields.Monetary(required=True, tracking=True)
-    start_month = fields.Date(required=True, tracking=True)
-    installment_count = fields.Integer(required=True, default=3, tracking=True)
-    schedule_ids = fields.One2many("tha.staff.credit.schedule", "credit_id", copy=False)
-    allocation_ids = fields.One2many("tha.staff.credit.allocation", "credit_id", copy=False)
-    settled_amount = fields.Monetary(compute="_compute_balances")
-    balance = fields.Monetary(compute="_compute_balances")
-    warning = fields.Char(compute="_compute_balances")
-    _external_unique = models.Constraint("UNIQUE(company_id, external_key)", "The import key already exists in this company.")
+    start_month = fields.Date(required=True, tracking=True, string='Repayment from')
+    end_date = fields.Date(compute='_compute_end_date', string='Repayment to')
+    installment_count = fields.Integer(default=3, required=True, tracking=True)
+    authorizer_id = fields.Many2one('res.users', string='Authorized by', tracking=True)
+    authorization_date = fields.Date(tracking=True)
+    schedule_ids = fields.One2many('tha.staff.credit.schedule', 'credit_id', copy=False)
+    allocation_ids = fields.One2many('tha.staff.credit.allocation', 'credit_id', copy=False)
+    deduction_line_ids = fields.One2many('account.move.line', 'tha_staff_credit_id', readonly=True)
+    settled_amount = fields.Monetary(compute='_compute_balance')
+    balance = fields.Monetary(compute='_compute_balance')
 
-    @api.depends("amount", "allocation_ids.amount", "allocation_ids.source_line_id.parent_state", "schedule_ids.amount", "installment_count")
-    def _compute_balances(self):
-        for record in self:
-            record.settled_amount = sum(record.allocation_ids.filtered(
-                lambda a: a.source_line_id.parent_state == "posted").mapped("amount"))
-            record.balance = record.amount - record.settled_amount
-            warnings = []
-            if not record.currency_id.is_zero(sum(record.schedule_ids.mapped("amount")) - record.amount):
-                warnings.append(_("Schedule total differs from charge"))
-            if len(record.schedule_ids) != record.installment_count:
-                warnings.append(_("Schedule count differs from installment count"))
-            record.warning = "; ".join(warnings)
+    @api.depends('start_month', 'installment_count', 'schedule_ids.due_date')
+    def _compute_end_date(self):
+        for bill in self:
+            bill.end_date = max(bill.schedule_ids.mapped('due_date'), default=False) or (
+                bill.start_month + relativedelta(months=max(0, bill.installment_count - 1), day=31)
+                if bill.start_month else False)
 
-    @api.onchange("employee_id")
+    @api.depends('amount', 'allocation_ids.amount', 'allocation_ids.source_line_id.parent_state',
+                 'deduction_line_ids.balance', 'deduction_line_ids.parent_state')
+    def _compute_balance(self):
+        for bill in self:
+            bill.settled_amount = bill._settled_at()
+            bill.balance = bill.amount - bill.settled_amount
+
+    def _settled_at(self, cutoff=None):
+        self.ensure_one()
+        manual = self.allocation_ids.filtered(lambda a: a.source_line_id.parent_state == 'posted'
+                                               and (not cutoff or a.date <= cutoff))
+        generated = self.deduction_line_ids.filtered(lambda l: l.parent_state == 'posted'
+                                                     and (not cutoff or l.date <= cutoff))
+        return sum(manual.mapped('amount')) - sum(generated.mapped('balance'))
+
+    def _config(self):
+        self.ensure_one()
+        config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
+        if not config:
+            raise UserError(_('Open Settings and configure this company first.'))
+        return config
+
+    @api.onchange('employee_id')
     def _onchange_employee(self):
         if self.employee_id:
             self.department_id = self.employee_id.department_id
-            # Public employee records deliberately avoid granting private HR access.
             self.partner_id = self.employee_id.work_contact_id
 
-    @api.onchange("source_line_id")
+    @api.onchange('source_move_id')
+    def _onchange_move(self):
+        self.source_line_id = False
+        if self.source_move_id:
+            config = self._config()
+            lines = self.source_move_id.line_ids.filtered(lambda l: l.account_id == config.account_id and l.debit > 0)
+            if len(lines) == 1:
+                self.source_line_id = lines
+                self._onchange_source()
+
+    @api.onchange('source_line_id')
     def _onchange_source(self):
         if self.source_line_id:
-            self.charge_date = self.source_line_id.date
-            self.start_month = self.source_line_id.date.replace(day=1)
-            self.partner_id = self.source_line_id.partner_id
-            self.amount = self.source_line_id.debit
+            line = self.source_line_id
+            self.source_move_id = line.move_id
+            self.charge_date = line.date
+            self.partner_id = line.partner_id
+            self.amount = line.debit
+            self.description = line.name or line.move_id.ref or line.move_id.name
+            self.start_month = line.date.replace(day=1)
 
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
-        for record in records:
-            if record.name == "New":
-                record.name = "SC/%s/%06d" % (record.company_id.id, record.id)
+        for bill in records:
+            bill.name = 'SC/%s/%06d' % (bill.company_id.id, bill.id)
         return records
 
-    @api.constrains("source_line_id", "amount", "company_id", "partner_id", "employee_id",
-                    "department_id", "charge_date", "installment_count", "start_month")
-    def _check_charge(self):
-        lock_sources(self.env, self.source_line_id)
-        for record in self:
-            config = self.env["tha.staff.credit.config"].search([("company_id", "=", record.company_id.id)], limit=1)
-            line = record.source_line_id
-            if (not config or line.account_id != config.account_id or line.company_id != record.company_id
-                    or line.parent_state != "posted" or line.debit <= 0):
-                raise ValidationError(_("Link a posted debit on this company's configured staff-credit account."))
-            if line.currency_id != record.currency_id:
-                raise ValidationError(_("Version 1 supports journal items in company currency only."))
-            if line.partner_id != record.partner_id:
-                raise ValidationError(_("The accounting partner must match the source journal item."))
-            if record.employee_id.company_id != record.company_id:
-                raise ValidationError(_("Staff must belong to the selected company."))
-            if record.charge_date != line.date:
-                raise ValidationError(_("Charge date must match the posted journal-item date."))
-            if record.amount <= 0 or record.installment_count < 1 or record.installment_count > 600:
-                raise ValidationError(_("Use a positive charge and between 1 and 600 installments."))
-            if record.start_month.replace(day=1) < record.charge_date.replace(day=1):
-                raise ValidationError(_("Installments cannot start before the charge month."))
-            allocated = sum(self.search([("source_line_id", "=", line.id)]).mapped("amount"))
-            if record.currency_id.compare_amounts(allocated, line.debit) > 0:
-                raise ValidationError(_("Charge allocations exceed the source debit."))
-            if record.currency_id.compare_amounts(sum(record.allocation_ids.mapped("amount")), record.amount) > 0:
-                raise ValidationError(_("Settlements exceed the charge."))
+    @api.constrains('source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id',
+                    'employee_id', 'department_id', 'charge_date', 'start_month', 'installment_count')
+    def _check_bill(self):
+        for bill in self:
+            config = bill._config()
+            config._serialize()
+            line = bill.source_line_id
+            if (line.move_id != bill.source_move_id or line.parent_state != 'posted' or line.debit <= 0
+                    or line.account_id != config.account_id or line.company_id != bill.company_id
+                    or line.currency_id != bill.currency_id or line.partner_id != bill.partner_id
+                    or bill.charge_date != line.date or bill.employee_id.company_id != bill.company_id
+                    or (bill.department_id.company_id and bill.department_id.company_id != bill.company_id)):
+                raise ValidationError(_('Link a posted company-currency Staff Credit debit matching company, partner and date. Staff and department must belong to the company.'))
+            if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
+                    or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)):
+                raise ValidationError(_('Use a positive bill, 1-600 installments, and a repayment start no earlier than the bill month.'))
+            total = sum(self.search([('source_line_id', '=', line.id)]).mapped('amount'))
+            if bill.currency_id.compare_amounts(total, line.debit) > 0:
+                raise ValidationError(_('Bill links exceed the original debit amount.'))
+
+    def _check_capacity(self):
+        for bill in self:
+            reserved = -sum(bill.deduction_line_ids.filtered(
+                lambda l: l.parent_state == 'draft' and not l.move_id.reversed_entry_id).mapped('balance'))
+            if bill.currency_id.compare_amounts(bill._settled_at() + reserved, bill.amount) > 0:
+                raise ValidationError(_('Posted settlements and reserved draft deductions exceed the bill amount.'))
 
     def write(self, values):
-        if {"amount", "source_line_id", "company_id", "partner_id", "employee_id", "charge_date"} & values.keys():
-            if any(record.allocation_ids or record.schedule_ids for record in self):
-                raise UserError(_("Remove the unsettled schedule and allocations before changing charge identity or amount."))
+        identity = {'source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id', 'employee_id', 'charge_date'}
+        if identity & values.keys() and any(b.schedule_ids or b.allocation_ids or b.deduction_line_ids for b in self):
+            raise UserError(_('Remove unused schedules and settlement links before changing the bill identity or amount.'))
         return super().write(values)
 
     def unlink(self):
-        if any(record.allocation_ids for record in self):
-            raise UserError(_("Remove settlement allocations before deleting a charge."))
+        if any(b.allocation_ids or b.deduction_line_ids for b in self):
+            raise UserError(_('A bill with settlement or deduction links cannot be deleted.'))
         return super().unlink()
 
     def action_generate_schedule(self):
         self.ensure_one()
-        if self.allocation_ids:
-            raise UserError(_("A schedule cannot be regenerated after settlements are assigned."))
+        if self.allocation_ids or self.deduction_line_ids:
+            raise UserError(_('The schedule cannot be replaced after settlements or deductions are linked.'))
         amount = self.currency_id.round(self.amount / self.installment_count)
-        final = self.amount - amount * (self.installment_count - 1)
-        if amount <= 0 or final <= 0:
-            raise UserError(_("Too many installments for this charge and currency rounding."))
+        final = self.currency_id.round(self.amount - amount * (self.installment_count - 1))
+        if min(amount, final) <= 0:
+            raise UserError(_('Too many installments for the currency rounding.'))
         self.schedule_ids.unlink()
-        start = self.start_month.replace(day=1)
-        self.write({"schedule_ids": [Command.create({
-            "due_date": start + relativedelta(months=i, day=31),
-            "amount": final if i == self.installment_count - 1 else amount,
+        self.write({'schedule_ids': [Command.create({
+            'due_date': self.start_month.replace(day=1) + relativedelta(months=i, day=31),
+            'amount': final if i == self.installment_count - 1 else amount,
         }) for i in range(self.installment_count)]})
-        self.message_post(body=_("Generated monthly repayment schedule."))
+        self.message_post(body=_('Generated monthly repayment plan.'))
 
-    def paid_installments(self, cutoff):
-        self.ensure_one()
-        paid = sum(self.allocation_ids.filtered(lambda a: a.source_line_id.parent_state == "posted"
-                    and a.source_line_id.date <= cutoff and a.kind == "repayment").mapped("amount"))
-        count = 0
-        for line in self.schedule_ids.sorted(lambda s: (s.due_date, s.id)):
-            if self.currency_id.compare_amounts(paid, line.amount) < 0:
-                break
-            paid -= line.amount
-            count += 1
-        return count
-
-    def action_suggest_settlements(self):
-        self.ensure_one()
-        if (self.search_count([("source_line_id", "=", self.source_line_id.id)]) != 1
-                or self.currency_id.compare_amounts(self.amount, self.source_line_id.debit) != 0):
-            raise UserError(_("This debit is split between charges. Allocate its settlements manually."))
-        partials = self.source_line_id.matched_credit_ids.filtered(
-            lambda p: p.credit_move_id.parent_state == "posted")
-        candidates = {}
-        for partial in partials:
-            candidates[partial.credit_move_id.id] = candidates.get(partial.credit_move_id.id, 0) + partial.amount
-        suggestions = []
-        remaining = self.balance
-        for line_id, amount in sorted(candidates.items()):
-            source = self.env["account.move.line"].browse(line_id)
-            existing = self.env["tha.staff.credit.allocation"].search([("source_line_id", "=", line_id)])
-            if existing or amount > remaining or source.account_id != self.source_line_id.account_id:
-                continue
-            suggestions.append(Command.create({"source_line_id": line_id, "amount": amount}))
-            remaining -= amount
-        if not suggestions:
-            raise UserError(_("No unambiguous, unallocated reconciled settlements were found."))
-        wizard = self.env["tha.staff.credit.suggestion"].create({"credit_id": self.id, "line_ids": suggestions})
-        return {"type": "ir.actions.act_window", "res_model": wizard._name, "res_id": wizard.id,
-                "view_mode": "form", "target": "new"}
+    @api.model
+    def action_settings(self):
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may configure settings.'))
+        config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.env.company.id)], limit=1)
+        return {'type': 'ir.actions.act_window', 'name': _('Staff Credit Settings'),
+                'res_model': 'tha.staff.credit.config', 'res_id': config.id or False,
+                'view_mode': 'form', 'target': 'new'}
 
 
 class CreditSchedule(models.Model):
-    _name = "tha.staff.credit.schedule"
-    _description = "Staff Credit Installment"
-    _order = "due_date, id"
+    _name = 'tha.staff.credit.schedule'
+    _description = 'Staff Credit Installment'
+    _order = 'due_date, id'
     _check_company_auto = True
 
-    credit_id = fields.Many2one("tha.staff.credit", required=True, ondelete="cascade", check_company=True)
-    company_id = fields.Many2one(related="credit_id.company_id", store=True)
-    currency_id = fields.Many2one(related="credit_id.currency_id")
+    credit_id = fields.Many2one('tha.staff.credit', required=True, ondelete='cascade', check_company=True)
+    company_id = fields.Many2one(related='credit_id.company_id', store=True)
+    currency_id = fields.Many2one(related='credit_id.currency_id')
     due_date = fields.Date(required=True)
+    month = fields.Date(compute='_compute_month', store=True)
     amount = fields.Monetary(required=True)
-    locked = fields.Boolean(compute="_compute_locked")
+    deduction_line_ids = fields.One2many('account.move.line', 'tha_staff_credit_schedule_id', readonly=True)
+    locked = fields.Boolean(compute='_compute_locked')
+    _month_unique = models.Constraint('UNIQUE(credit_id, month)', 'Use one installment per bill per month.')
 
+    @api.depends('due_date')
+    def _compute_month(self):
+        for line in self:
+            line.month = line.due_date.replace(day=1) if line.due_date else False
+
+    @api.depends('deduction_line_ids')
     def _compute_locked(self):
-        for record in self:
-            paid = record.credit_id.paid_installments(fields.Date.today())
-            record.locked = record in record.credit_id.schedule_ids.sorted(lambda s: (s.due_date, s.id))[:paid]
+        for line in self:
+            line.locked = bool(line.deduction_line_ids)
 
-    @api.constrains("amount", "due_date", "credit_id")
+    @api.constrains('amount', 'due_date', 'credit_id')
     def _check_schedule(self):
         for line in self:
             if line.amount <= 0 or line.due_date < line.credit_id.charge_date:
-                raise ValidationError(_("Installments require a positive amount and a date on/after the charge."))
-            others = line.credit_id.schedule_ids - line
-            if any(s.due_date.replace(day=1) == line.due_date.replace(day=1) for s in others):
-                raise ValidationError(_("Use one installment per month; move its date to skip a month."))
-
-    def _check_editable(self):
-        # Protect the paid prefix, including inserting/reordering rows before it.
-        if any(c.allocation_ids for c in self.credit_id):
-            for record in self:
-                ordered = record.credit_id.schedule_ids.sorted(lambda s: (s.due_date, s.id))
-                paid = record.credit_id.paid_installments(fields.Date.today())
-                if record in ordered[:paid]:
-                    raise UserError(_("Fully settled installments cannot be edited or removed."))
+                raise ValidationError(_('Installments need a positive amount and a date on or after the bill.'))
 
     def write(self, values):
-        self._check_editable()
-        if "credit_id" in values:
-            raise UserError(_("Installments cannot be moved between charges."))
-        self._check_paid_prefix(values.get("due_date"))
-        result = super().write(values)
-        self.credit_id.message_post(body=_("Edited an unpaid installment: %s", str(values)))
-        return result
-
-    def _check_paid_prefix(self, new_date):
-        for credit in self.credit_id:
-            paid = credit.paid_installments(fields.Date.today())
-            ordered = credit.schedule_ids.sorted(lambda s: (s.due_date, s.id))
-            if paid and new_date and fields.Date.to_date(new_date) <= ordered[paid - 1].due_date:
-                raise UserError(_("An installment cannot be inserted before the paid schedule."))
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        for values in vals_list:
-            credit = self.env["tha.staff.credit"].browse(values["credit_id"])
-            credit.schedule_ids._check_paid_prefix(values.get("due_date"))
-        result = super().create(vals_list)
-        result.credit_id.message_post(body=_("Added repayment schedule lines.")) if len(result.credit_id) == 1 else None
-        return result
+        if {'amount', 'due_date', 'credit_id'} & values.keys() and any(self.mapped('locked')):
+            raise UserError(_('Delete the unposted deduction draft before editing its installment. Posted deductions require reversal.'))
+        if 'credit_id' in values:
+            raise UserError(_('Installments cannot move between bills.'))
+        return super().write(values)
 
     def unlink(self):
-        self._check_editable()
-        for credit in self.credit_id:
-            credit.message_post(body=_("Removed unpaid installment(s)."))
+        if any(self.mapped('locked')):
+            raise UserError(_('An installment linked to a deduction cannot be deleted.'))
         return super().unlink()
 
 
 class CreditAllocation(models.Model):
-    _name = "tha.staff.credit.allocation"
-    _description = "Staff Credit Settlement Allocation"
-    _order = "date, id"
+    _name = 'tha.staff.credit.allocation'
+    _description = 'Existing Staff Credit Settlement'
+    _order = 'id'
     _check_company_auto = True
 
-    credit_id = fields.Many2one("tha.staff.credit", required=True, ondelete="restrict", check_company=True)
-    company_id = fields.Many2one(related="credit_id.company_id", store=True)
-    currency_id = fields.Many2one(related="credit_id.currency_id")
-    source_line_id = fields.Many2one("account.move.line", required=True, ondelete="restrict", check_company=True,
-                                    domain="[('company_id', '=', company_id), ('parent_state', '=', 'posted'), ('credit', '>', 0)]")
-    move_id = fields.Many2one(related="source_line_id.move_id")
-    date = fields.Date(related="source_line_id.date", store=True)
+    credit_id = fields.Many2one('tha.staff.credit', required=True, ondelete='restrict', check_company=True)
+    company_id = fields.Many2one(related='credit_id.company_id', store=True)
+    currency_id = fields.Many2one(related='credit_id.currency_id')
+    source_line_id = fields.Many2one('account.move.line', required=True, ondelete='restrict', check_company=True,
+                                    domain="[('company_id', '=', company_id), ('parent_state', '=', 'posted'), ('credit', '>', 0), ('tha_staff_credit_id', '=', False)]")
+    move_id = fields.Many2one(related='source_line_id.move_id')
+    date = fields.Date(related='source_line_id.date')
     amount = fields.Monetary(required=True)
-    kind = fields.Selection([("repayment", "Repayment / payroll deduction"),
-                             ("adjustment", "Credit adjustment"), ("reversal", "Charge reversal")],
-                            default="repayment", required=True)
-    _source_unique = models.Constraint("UNIQUE(credit_id, source_line_id)", "This settlement is already linked to this charge.")
+    kind = fields.Selection([('repayment', 'Repayment'), ('adjustment', 'Adjustment')], default='repayment', required=True)
+    _source_unique = models.Constraint('UNIQUE(credit_id, source_line_id)', 'This settlement is already linked to the bill.')
 
-    @api.constrains("source_line_id", "credit_id", "amount", "kind")
+    @api.constrains('credit_id', 'source_line_id', 'amount')
     def _check_allocation(self):
-        lock_sources(self.env, self.source_line_id | self.credit_id.source_line_id)
-        for record in self:
-            line, credit = record.source_line_id, record.credit_id
-            if (line.parent_state != "posted" or line.credit <= 0 or line.company_id != credit.company_id
-                    or line.account_id != credit.source_line_id.account_id or line.currency_id != credit.currency_id):
-                raise ValidationError(_("Link a posted company-currency credit on the charge's receivable account."))
-            if line.partner_id != credit.partner_id or line.date < credit.charge_date or record.amount <= 0:
-                raise ValidationError(_("Settlement partner/date/amount does not match the charge."))
-            total = sum(self.search([("source_line_id", "=", line.id)]).mapped("amount"))
-            if credit.currency_id.compare_amounts(total, line.credit) > 0:
-                raise ValidationError(_("Allocations exceed the source credit."))
-            if credit.currency_id.compare_amounts(sum(credit.allocation_ids.mapped("amount")), credit.amount) > 0:
-                raise ValidationError(_("Settlements exceed the charge balance."))
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        records = super().create(vals_list)
-        for record in records:
-            record.credit_id.message_post(body=_("Assigned settlement %s: %s (%s)",
-                                                  record.move_id.name, record.amount, record.kind))
-        return records
+        for allocation in self:
+            bill, line = allocation.credit_id, allocation.source_line_id
+            bill._config()._serialize()
+            if (line.parent_state != 'posted' or line.credit <= 0 or line.tha_staff_credit_id
+                    or line.company_id != bill.company_id or line.account_id != bill.source_line_id.account_id
+                    or line.currency_id != bill.currency_id or line.partner_id != bill.partner_id
+                    or line.date < bill.charge_date or allocation.amount <= 0):
+                raise ValidationError(_('Select an existing posted credit matching bill account, partner and currency, dated on or after the bill. Generated deductions count automatically.'))
+            total = sum(self.search([('source_line_id', '=', line.id)]).mapped('amount'))
+            if bill.currency_id.compare_amounts(total, line.credit) > 0:
+                raise ValidationError(_('Allocations exceed the existing credit amount.'))
+            bill._check_capacity()
 
     def write(self, values):
-        if "credit_id" in values or "source_line_id" in values:
-            raise UserError(_("Remove and recreate the allocation to change its accounting source."))
-        result = super().write(values)
-        for credit in self.credit_id:
-            credit.message_post(body=_("Updated settlement allocation: %s", str(values)))
-        return result
+        if {'credit_id', 'source_line_id'} & values.keys():
+            raise UserError(_('Remove and recreate a settlement link to change its source.'))
+        return super().write(values)
 
-    def unlink(self):
-        for record in self:
-            record.credit_id.message_post(body=_("Removed settlement allocation %s: %s", record.move_id.name, record.amount))
-        return super().unlink()
+
+class CreditBatch(models.Model):
+    _name = 'tha.staff.credit.batch'
+    _description = 'Monthly Staff Credit Deduction'
+    _check_company_auto = True
+
+    company_id = fields.Many2one('res.company', required=True)
+    employee_id = fields.Many2one('hr.employee.public', required=True, check_company=True)
+    month = fields.Date(required=True)
+    move_id = fields.Many2one('account.move', check_company=True, ondelete='set null', readonly=True)
+    _staff_month_unique = models.Constraint('UNIQUE(company_id, employee_id, month)', 'A monthly deduction already exists for this staff member.')

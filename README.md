@@ -1,74 +1,33 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Tracks staff receivables against existing posted accounting entries, with an editable monthly plan, allocations, spreadsheet validation and a native Odoo accounting report, like Profit and Loss and Balance Sheet. The report includes the standard toolbar, date navigation, search, PDF and XLSX exports. No report or register action creates entries, reconciles journal items, or runs payroll.
+Fresh-install module, version 19.0.2.0.3. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. The previous register/report/import/accounts screens and PDF/native accounting report have been removed.
 
-## Setup
+## Setup and bills
 
-1. Install `tha_vhg_staff_credit_report` with dependencies `account`, `account_reports`, `hr`, `mail`, `tha_vhg_daily_cash_register` (shared Other Reports menu), and Python `xlsxwriter`.
-2. Assign **Staff Credit / Reader** or **Staff Credit / Manager** in user permissions. Admin initially receives Manager. Reader includes accounting read access; Manager adds register/configuration/import access, without granting payroll or private employee access.
-3. Select the hospital company. Open **Accounting > Reporting > Other Reports > Staff Credit > Accounts**, select the company and its reconcilable receivable account. The default looks up `130100` in that company's chart. Configuration is explicit: no company IDs or account IDs are hard-coded in business code.
-4. Ensure staff have employee records, departments, work contacts and a unique contact **Reference** for spreadsheet imports. The register uses `hr.employee.public` to avoid private HR permissions. Archived staff remain reportable.
+Assign Staff Credit Reader or Manager. Managers maintaining bills need access to the source accounting documents. Generating monthly drafts additionally requires Accounting (`account.group_account_user`); posting follows native Accounting permissions. Readers see public employee information, not private HR data.
 
-## Daily use
+Select one company, click **Settings**, and choose its reconcilable Staff Credit account (suggested code 130100), salary expense account (suggested 701010), and general deduction journal. No accounts or original bills are created automatically.
 
-Create one Register record per hospital bill or other staff debt. Select its posted debit journal item, responsible staff, accounting partner, department at charge date, description, amount and repayment terms. Source date and partner must match the journal item. Multiple records can split one aggregated debit, up to its total. A dedicated staff accounting partner is required on each source; partnerless or pooled payroll entries need accounting review in the existing workflow.
+Create a bill and select an existing posted invoice or journal entry, then its Staff Credit debit item. A single qualifying debit is selected automatically. Source date, partner and amount default from that item. A combined source debit may be split between bill records without exceeding its amount. Use company currency only. Select the responsible staff member, department at the time of charge, description, category, Anzer reference and optional authorization information. The original invoice/entry remains clickable.
 
-Generate equal monthly installments; the final installment absorbs rounding. Edit unpaid amounts or move an unpaid due date to skip a month. One installment is permitted per month. The warning banner identifies inconsistent schedule totals/counts. Paid installments cannot be changed, removed or preceded by inserted installments. Plan generation after any settlement is blocked.
+Set Repayment from and installment count, then **Generate Repayment Plan**. Equal installments are rounded in company currency; the last installment absorbs the difference. Edit unused installment amounts/dates to match the agreement or skip months. The plan must equal the original bill and its count must match before generating deductions. Authorization is informational.
 
-Assign existing posted credit journal items in **Actual settlements**. Select repayment/payroll, credit adjustment, or charge reversal and enter the amount allocated to this charge. One source can settle several charges, with no over-allocation. One charge/source pair is allowed; edit its amount rather than creating a duplicate. Amounts cannot exceed the charge. Classification is explicit: do not label write-offs as payroll repayments.
+## Monthly review
 
-**Suggest reconciled settlements** proposes unallocated credit lines already reconciled by accounting against an unsplit charge debit. Review classification and confirm before any allocation is created. Ambiguous splits, already allocated sources and unreconciled entries require manual assignment. No matching by employee name or automatic oldest-debt matching is performed.
+Click **Generate Monthly Deductions**, choose company, month and optionally staff. The operation includes all scheduled bills for each selected staff member, independent of the bill list's current search/selection. It creates one month-end **draft** per staff member: Dr salary expense / Cr Staff Credit, with a separate credit line per bill. Review and post using normal Accounting actions. This does not run payroll, create original bills, automatically post, or reconcile receivables.
 
-Linked entries are protected against draft/cancellation and accounting-source edits. A manager must remove the affected allocations/register links before accounting corrects those sources. All link and schedule changes are recorded in chatter. Attach patient evidence to the charge chatter, not to public attachments. Normal Odoo attachment permissions apply to the secured parent record.
+Repeated generation opens existing entries, including posted/cancelled entries. To change an unused batch (including adding a newly registered bill), delete its draft and generate it again. Linked installments are protected until draft deletion. Posted deductions require standard reversal; a reversal restores the staff balance from its accounting date onward. The original month's batch is not generated again after reversal. Draft reservations and posted settlements cannot exceed original debt. Foreign-currency source items are rejected.
 
-## Monthly report
+Use **Existing settlements** for historical repayments or adjustments, allocating existing posted credit items to bills. Generated credits count automatically and cannot be allocated again. Remove manual source links before correcting/reversing those external entries; retain approved exports for audit. Original bill sources are protected while linked.
 
-Open **Accounting > Reporting > Other Reports > Staff Credit > Monthly Report** (direct path `/odoo/staff-credit-monthly`). Select the company in Odoo's company selector and the month in the standard report date menu. Choose All Staff, All Departments, All Categories or All Statuses to filter; changes reload automatically. The report always uses the complete calendar month containing the selected end date. Select one company at a time. An unconfigured company displays an explanatory notice instead of an empty technical form. After an upgrade, refresh the browser once to replace cached menus/assets.
+## Excel report
 
-- **100% Bill** includes charges posted by selected month-end, including new charges during the month.
-- **Prior settlements** are all allocated credits dated before the selected month, including classified adjustments/reversals.
-- **Balance** = charge less prior settlements; it is before selected-month deductions, and includes current-month additions.
-- **Monthly planned** is the agreed schedule amount due in that month. Later payments do not rewrite it.
-- **Times** is fully paid installments through the previous month divided by scheduled installment count. Only repayment-classified allocations count as paid installments; partial payments carry to the earliest unpaid installment. Adjustments/reversals reduce debt but do not falsely count as paid installments.
-- **Actual** is the selected month's allocated credits; **Closing** subtracts them from Balance.
-- Status filters use **month-end** balance, not today's balance. Historical calculations use source accounting dates, not current reconciliation residuals.
+**Export Excel** accepts company, month, staff, department, category and month-end open/settled filters. These wizard filters determine the output, independently of list selection. The 14 columns follow the latest supplied information template: No, Date, Staff name, Department, Name (Patient & Others), 100% Bill, Settlement up to month, Times, month amount, Balance for month, Remark, System Reference, Anzer System invoice, Odoo System invoice.
 
-The screen, native XLSX and native A3 landscape PDF show the same charge rows and **Totals** for the active filters. The report does not include a company-wide GL reconciliation; use the General Ledger report for account-level reconciliation. Search matches charge references, staff, department, descriptions, remarks and accounting references. Each charge's standard caret menu opens the Staff Credit record or its charge journal entry; **Register** opens the company's register. All monetary values use company currency and its rounding. Version 1 rejects source journal items with a different currency; foreign-currency schedules are out of scope. The older transient report/export APIs remain available for compatibility, but are no longer the Monthly Report menu's interface.
+Settlement includes posted amounts through month-end, including dated generated reversals. Balance equals bill less that settlement. Month amount is planned even while the entry is draft; Times is the scheduled installment ordinal (1/3 in the first scheduled month), blank in a skipped month. System Reference is the SC record reference; Odoo System invoice is the original document number. The workbook contains one table with blue headings, totals, filters and frozen headings. It does not contain the template's workflow notes.
 
-### Local examples (THA / Thukhasaytanar, October 2026)
+Historical calculations use accounting dates, not today's residual balance. Editable metadata/plans and manual allocations are not immutable month-close snapshots: retain approved monthly exports.
 
-| Example | Charge | Settled through September | October planned | October actual | October closing | Times |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| DEMO hospital bill, partial payment | 470,000 | 156,667 | 156,667 | 50,000 | 263,333 | 1/3 |
-| DEMO new meals charge | 250,000 | 0 | 50,000 | 0 | 250,000 | 0/5 |
-| DEMO fully settled hospital bill | 120,000 | 120,000 | 0 | 0 | 0 | 2/2 |
+## Validation
 
-The first two charges belong to **DEMO Staff Credit Employee / Transport**. The settled charge belongs to **DEMO Staff Credit Finance Employee / Finance**. Try **Settled at month end** to show only the fully paid charge, then **Open at month end** for the other two. Use the caret beside a charge reference to inspect its schedule and actual settlement entries. All examples use **SCDMO / STAFF CREDIT DEMO ONLY**, and no real staff/patient data.
-
-Historical figures reflect current validated metadata and allocations applied to historical accounting dates. This is not an immutable month-close archive. Save approved monthly exports and restrict Manager access. Accounting changes require removing links first and then revalidating/relinking the affected records. Automated repayment reversals/refunds and changes to settled schedules are outside v1; correct mistaken links through the manager workflow and audit trail rather than entering negative allocations.
-
-## Excel import
-
-Download the Excel `.xlsx` template from **Staff Credit > Import**. It has an `Import` sheet for data and an `Instructions` sheet explaining the row types and workflow. Replace every example value; keep the exact column names and put charges first, schedule rows second, and settlements last. The importer accepts up to 5,000 data rows. Use plain numeric amounts without currency symbols or thousands separators, and ISO `YYYY-MM-DD` dates. Matching legacy UTF-8 CSV files are still accepted.
-
-- `charge` rows: unique `external_key`, staff work-contact Reference as `staff_identifier`, exact company department, charge date/category/description, posted move reference and journal code, line number, amount, start month and installment count. Category keys: `hospital`, `damage`, `penalty`, `meals`, `other`.
-- `schedule` rows: `external_key`, `due_date`, `amount`. An existing scheduled month is updated; a new month is added. Plan total/count must still match. To skip a generated month during bulk setup, edit that charge's schedule in the register before importing settlements.
-- `settlement` rows: charge `external_key`, posted move reference, journal code, line number, amount and `kind` (`repayment`, `adjustment`, `reversal`). Existing imported charges can receive subsequent settlement rows.
-
-Line number is **1-based among ALL journal items of the entry ordered by database journal-item ID**, not the visible debit-only subset or a spreadsheet row number. Retrieve source IDs/references from the target database; do not reuse IDs from another database. The importer resolves references inside the selected company and refuses ambiguity.
-
-Put charges first, schedule overrides second, settlements last. **Validate only** executes real constraints inside a rolled-back savepoint; no register/accounting data is saved. **Validate and import** repeats validation and saves all rows atomically. One invalid row rolls back the entire file and returns row errors. Duplicate charge keys/source references are rejected; importing an existing charge again does not update it or create another entry. Validation previews consume PostgreSQL sequence values, so register IDs may have gaps.
-
-Collect the source workbook, employee/partner mapping, agreed schedules and posted GL details before preparing the live import. Reconcile totals before rollout. Installation alone does not reconstruct history or change the hospital issue's completion status.
-
-## Local validation
-
-Run in the project Docker environment, database `THA`:
-
-```powershell
-docker exec odoo_19 odoo -d THA -i tha_vhg_staff_credit_report --stop-after-init --http-port=8079 --gevent-port=8089 --max-cron-threads=0 --test-enable --test-tags /tha_vhg_staff_credit_report
-docker restart odoo_19
-Get-Content .\logs\server.log -Tail 300
-```
-
-Use `-u` after later updates and bump the manifest version for code/config changes. Tests run in rollback transactions using clearly named Thukhasaytanar fixtures. The optional local demo script under `scripts/` is explicitly restricted to THA and creates labeled demo accounting data; never run it on live.
+Use Docker and local database THA. See VALIDATION.md for the verified run. All automated fixtures roll back. No migration, live import or demo-seeding script is included. Existing prototype installations must be reviewed and uninstalled before a fresh install; uninstall removes module records but must preserve accounting documents.

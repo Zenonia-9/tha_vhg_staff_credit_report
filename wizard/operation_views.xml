@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_operation" model="ir.ui.view">
+        <field name="name">tha.staff.credit.operation.form</field><field name="model">tha.staff.credit.operation</field>
+        <field name="arch" type="xml"><form string="Staff Credit Report">
+            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month"/>
+                <field name="employee_id" domain="[('company_id', '=', company_id)]"/>
+                <field name="department_id" invisible="mode == 'deductions'"/>
+                <field name="category" invisible="mode == 'deductions'"/>
+                <field name="status" invisible="mode == 'deductions'"/>
+            </group>
+            <p invisible="mode != 'deductions'">Creates one month-end draft per staff member, including all their scheduled bills in the selected company. Existing batches open for review. To change an unused batch, delete its draft and generate it again. Posting is a separate Accounting action.</p>
+            <p invisible="mode != 'export'">Settlement and balance include posted entries through month-end. The monthly amount and Times show the repayment plan. Filters here determine the Excel rows.</p>
+            <footer>
+                <button name="action_export" type="object" string="Export Excel" class="btn-primary" invisible="mode != 'export'"/>
+                <button name="action_generate" type="object" string="Generate / Open Drafts" class="btn-primary" invisible="mode != 'deductions'" groups="tha_vhg_staff_credit_report.group_manager"/>
+                <button string="Cancel" special="cancel"/>
+            </footer>
+        </form></field>
+    </record>
+    <record id="action_export" model="ir.actions.act_window">
+        <field name="name">Export Staff Credit Report</field><field name="res_model">tha.staff.credit.operation</field>
+        <field name="view_mode">form</field><field name="target">new</field>
+        <field name="context">{'default_mode': 'export'}</field>
+    </record>
+    <record id="action_deductions" model="ir.actions.act_window">
+        <field name="name">Generate Monthly Deductions</field><field name="res_model">tha.staff.credit.operation</field>
+        <field name="view_mode">form</field><field name="target">new</field>
+        <field name="context">{'default_mode': 'deductions'}</field>
+    </record>
+</odoo>

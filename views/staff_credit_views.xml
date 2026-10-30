@@ -3,64 +3,79 @@
     <record id="view_credit_list" model="ir.ui.view">
         <field name="name">tha.staff.credit.list</field><field name="model">tha.staff.credit</field>
         <field name="arch" type="xml">
-            <list decoration-warning="warning" decoration-muted="balance == 0">
-                <field name="name"/><field name="charge_date"/><field name="employee_id"/>
-                <field name="department_id"/><field name="category"/><field name="description"/>
-                <field name="amount" sum="Charges"/><field name="settled_amount" sum="Settled"/>
-                <field name="balance" sum="Balance"/><field name="warning" optional="show"/>
-                <field name="company_id" groups="base.group_multi_company"/>
-                <field name="currency_id" column_invisible="True"/>
+            <list string="Staff Credit Report" decoration-muted="balance == 0" import="0">
+                <header>
+                    <button name="%(action_export)d" type="action" string="Export Excel" display="always"/>
+                    <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" display="always" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <button name="action_settings" type="object" string="Settings" display="always" groups="tha_vhg_staff_credit_report.group_manager"/>
+                </header>
+                <field name="name"/><field name="charge_date"/><field name="employee_id"/><field name="department_id"/>
+                <field name="description"/><field name="source_move_id"/><field name="amount" sum="Bills"/>
+                <field name="settled_amount" sum="Settled"/><field name="balance" sum="Balance"/>
+                <field name="company_id" groups="base.group_multi_company"/><field name="currency_id" column_invisible="True"/>
             </list>
         </field>
     </record>
     <record id="view_credit_form" model="ir.ui.view">
         <field name="name">tha.staff.credit.form</field><field name="model">tha.staff.credit</field>
         <field name="arch" type="xml">
-            <form string="Staff Credit">
+            <form string="Staff Credit Bill">
                 <header>
-                    <button name="action_generate_schedule" type="object" string="Generate schedule" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unpaid schedule with equal monthly installments?"/>
-                    <button name="action_suggest_settlements" type="object" string="Suggest reconciled settlements" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?"/>
+                    <button name="%(action_export)d" type="action" string="Export Excel"/>
+                    <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <button name="action_settings" type="object" string="Settings" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
                 <sheet>
-                    <div class="alert alert-warning" role="status" invisible="not warning"><field name="warning"/></div>
-                    <h1><field name="name" readonly="1"/></h1>
+                    <h1><field name="name"/></h1>
                     <group>
-                        <group>
-                            <field name="company_id"/><field name="employee_id" domain="[('company_id', '=', company_id)]"/>
-                            <field name="partner_id"/><field name="department_id"/><field name="category"/>
-                            <field name="description"/><field name="external_key"/>
+                        <group string="Bill link">
+                            <field name="company_id"/><field name="source_move_id" options="{'no_create': True}"/>
+                            <field name="source_line_id" options="{'no_create': True}"/>
+                            <field name="charge_date"/><field name="partner_id"/><field name="amount"/>
+                            <field name="anzer_reference"/><field name="currency_id" invisible="1"/>
                         </group>
-                        <group>
-                            <field name="source_line_id" options="{'no_create': True}"/><field name="source_move_id"/>
-                            <field name="charge_date"/><field name="amount"/><field name="settled_amount"/>
-                            <field name="balance"/><field name="start_month"/><field name="installment_count"/>
-                            <field name="currency_id" invisible="1"/>
+                        <group string="Staff and repayment">
+                            <field name="employee_id" domain="[('company_id', '=', company_id)]" options="{'no_create': True}"/>
+                            <field name="department_id"/><field name="category"/><field name="description"/>
+                            <field name="start_month"/><field name="installment_count"/><field name="end_date"/>
+                            <field name="settled_amount"/><field name="balance"/>
                         </group>
                     </group>
                     <notebook>
-                        <page string="Monthly plan">
-                            <p>One installment per month. Move an unpaid installment to a later month to skip a deduction. Fully paid installments are protected. The schedule must total the original charge.</p>
+                        <page string="Repayment plan">
+                            <p>One installment per month. Move an unused installment to skip a month. Generated drafts reserve the amount; only posted entries count as settlement.</p>
                             <field name="schedule_ids">
                                 <list editable="bottom">
-                                    <field name="locked" readonly="1"/><field name="due_date" readonly="locked"/>
-                                    <field name="amount" readonly="locked" sum="Scheduled"/>
+                                    <field name="locked"/><field name="due_date" readonly="locked"/>
+                                    <field name="amount" readonly="locked" sum="Planned"/>
+                                    <field name="deduction_line_ids" widget="many2many_tags" readonly="1"/>
                                     <field name="currency_id" column_invisible="True"/>
                                 </list>
                             </field>
                         </page>
-                        <page string="Actual settlements">
-                            <p>Assign existing posted credits only. This screen never posts entries or reconciles accounting.</p>
+                        <page string="Generated deductions">
+                            <field name="deduction_line_ids" readonly="1">
+                                <list create="0" delete="0"><field name="move_id"/><field name="date"/>
+                                    <field name="parent_state"/><field name="debit"/><field name="credit"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Existing settlements">
+                            <p>Link historical repayments or adjustments here. Deductions generated by this module are counted automatically and cannot be linked again.</p>
                             <field name="allocation_ids">
                                 <list editable="bottom">
                                     <field name="company_id" column_invisible="True"/>
-                                    <field name="source_line_id" options="{'no_create': True}"/>
-                                    <field name="move_id"/><field name="date"/><field name="kind"/>
-                                    <field name="amount" sum="Settlements"/>
+                                    <field name="source_line_id" options="{'no_create': True}"/><field name="move_id"/>
+                                    <field name="date"/><field name="kind"/><field name="amount" sum="Settlements"/>
                                     <field name="currency_id" column_invisible="True"/>
                                 </list>
                             </field>
                         </page>
-                        <page string="Remarks"><field name="remark"/></page>
+                        <page string="Notes and authorization">
+                            <group><field name="authorizer_id"/><field name="authorization_date"/></group>
+                            <field name="remark"/>
+                        </page>
                     </notebook>
                 </sheet>
                 <chatter/>
@@ -69,30 +84,27 @@
     </record>
     <record id="view_credit_search" model="ir.ui.view">
         <field name="name">tha.staff.credit.search</field><field name="model">tha.staff.credit</field>
-        <field name="arch" type="xml">
-        <search>
+        <field name="arch" type="xml"><search>
             <field name="name"/><field name="employee_id"/><field name="department_id"/>
-            <field name="category"/><field name="external_key"/>
-            <filter name="by_staff" string="Staff" context="{'group_by': 'employee_id'}"/>
-            <filter name="by_department" string="Department" context="{'group_by': 'department_id'}"/>
-            <filter name="by_category" string="Category" context="{'group_by': 'category'}"/>
+            <field name="source_move_id"/><field name="anzer_reference"/><field name="description"/><field name="category"/>
+            <filter name="staff" string="Staff" context="{'group_by': 'employee_id'}"/>
+            <filter name="department" string="Department" context="{'group_by': 'department_id'}"/>
         </search></field>
     </record>
+    <record id="view_config_form" model="ir.ui.view">
+        <field name="name">tha.staff.credit.config.form</field><field name="model">tha.staff.credit.config</field>
+        <field name="arch" type="xml"><form string="Staff Credit Settings">
+            <group><field name="company_id"/>
+                <field name="account_id" domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable'), ('reconcile', '=', True)]"/>
+                <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost'])]"/>
+                <field name="journal_id"/>
+            </group>
+        </form></field>
+    </record>
     <record id="action_credit" model="ir.actions.act_window">
-        <field name="name">Staff Credit Register</field><field name="res_model">tha.staff.credit</field>
-        <field name="view_mode">list,form</field>
+        <field name="name">Staff Credit Report</field><field name="res_model">tha.staff.credit</field>
+        <field name="view_mode">list,form</field><field name="path">staff-credit-report</field>
     </record>
-    <record id="view_config_list" model="ir.ui.view">
-        <field name="name">tha.staff.credit.config.list</field><field name="model">tha.staff.credit.config</field>
-        <field name="arch" type="xml">
-            <list editable="bottom"><field name="company_id"/><field name="account_id"/></list>
-        </field>
-    </record>
-    <record id="action_config" model="ir.actions.act_window">
-        <field name="name">Staff Credit Accounts</field><field name="res_model">tha.staff.credit.config</field>
-        <field name="view_mode">list</field>
-    </record>
-    <menuitem id="menu_staff_credit" name="Staff Credit" parent="tha_vhg_daily_cash_register.menu_other_reports" sequence="30" groups="tha_vhg_staff_credit_report.group_reader"/>
-    <menuitem id="menu_register" name="Register" parent="menu_staff_credit" action="action_credit" sequence="10"/>
-    <menuitem id="menu_config" name="Accounts" parent="menu_staff_credit" action="action_config" sequence="90" groups="tha_vhg_staff_credit_report.group_manager"/>
+    <menuitem id="menu_staff_credit_report" name="Staff Credit Report" parent="tha_vhg_daily_cash_register.menu_other_reports"
+              action="action_credit" sequence="30" groups="tha_vhg_staff_credit_report.group_reader"/>
 </odoo>
