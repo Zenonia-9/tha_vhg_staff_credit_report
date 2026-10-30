@@ -31,7 +31,7 @@ class CreditOperation(models.TransientModel):
     @api.model
     def default_get(self, names):
         values = super().default_get(names)
-        if values.get('mode') == 'deductions' and 'bill_ids' in names:
+        if values.get('mode', self.env.context.get('default_mode')) == 'deductions' and 'bill_ids' in names:
             ids = self.env.context.get('active_ids') or [self.env.context.get('active_id')]
             bills = self.env['tha.staff.credit'].browse([i for i in ids if i]).exists() if self.env.context.get('active_model') == 'tha.staff.credit' else self.env['tha.staff.credit']
             bills.check_access('read')

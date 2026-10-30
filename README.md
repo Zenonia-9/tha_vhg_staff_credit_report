@@ -1,6 +1,6 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Fresh-install module, version 19.0.2.0.6. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. The previous register/report/import/accounts screens and PDF/native accounting report have been removed.
+Fresh-install module, version 19.0.2.0.7. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. The previous register/report/import/accounts screens and PDF/native accounting report have been removed.
 
 ## Setup and bills
 

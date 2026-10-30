@@ -4,7 +4,7 @@
         <field name="name">tha.staff.credit.operation.form</field><field name="model">tha.staff.credit.operation</field>
         <field name="arch" type="xml">
             <form string="Staff Credit Report">
-            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month"/><field name="bill_ids" widget="many2many_tags" readonly="1" invisible="mode != 'deductions'"/>
+            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month"/><field name="bill_ids" widget="many2many_tags" readonly="1" force_save="1" invisible="mode != 'deductions'"/>
                 <field name="employee_id" domain="[('company_id', '=', company_id)]"/>
                 <field name="department_id" invisible="mode == 'deductions'"/>
                 <field name="category" invisible="mode == 'deductions'"/>

@@ -352,3 +352,16 @@ class TestStaffCredit(TransactionCase):
         view = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_list').arch_db)
         button = view.xpath('//header/button[@string="Generate Monthly Deductions"]')[0]
         self.assertNotEqual(button.get('display'), 'always')
+
+    def test_browser_wizard_preserves_readonly_selection_on_create(self):
+        bill = self._bill()
+        model = self.env['tha.staff.credit.operation'].with_context(
+            default_mode='deductions', active_model='tha.staff.credit', active_ids=bill.ids)
+        # Browser sends mode explicitly but can omit a readonly default field.
+        wizard = model.create({'mode': 'deductions', 'company_id': self.company.id, 'month': '2026-09-01'})
+        self.assertEqual(wizard.bill_ids, bill)
+        from lxml import etree
+        arch = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_operation').arch_db)
+        self.assertEqual(arch.xpath('//field[@name="bill_ids"]')[0].get('force_save'), '1')
+        action = wizard.with_user(self.manager).action_generate()
+        self.assertEqual(self.env['account.move'].search(action['domain']).line_ids.tha_staff_credit_id, bill)
