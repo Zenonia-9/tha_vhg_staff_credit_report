@@ -68,11 +68,8 @@ class AccountMove(models.Model):
                             or bill.currency_id.compare_amounts(line.credit, schedule.amount)):
                         raise ValidationError(_('Deduction lines must match their bills and scheduled installments exactly.'))
                     seen.add(schedule.id)
-                expected_schedules = self.env['tha.staff.credit.schedule'].search([
-                    ('company_id', '=', batch.company_id.id), ('credit_id.employee_id', '=', batch.employee_id.id),
-                    ('month', '=', batch.month), ('credit_id.charge_date', '<=', move.date)])
-                if seen != set(expected_schedules.ids):
-                    raise ValidationError(_('The draft must include every scheduled bill for this staff member and month. Delete the draft and generate it again.'))
+                if seen != set(batch.schedule_ids.ids):
+                    raise ValidationError(_('The draft must retain every selected installment in its batch. Delete the draft and generate it again.'))
                 salary = move.line_ids - tagged
                 if (len(salary) != 1 or salary.account_id != config.salary_account_id or salary.credit
                         or move.company_id.currency_id.compare_amounts(salary.debit, sum(tagged.mapped('credit')))):

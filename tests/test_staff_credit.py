@@ -56,6 +56,8 @@ class TestStaffCredit(TransactionCase):
         return bill
 
     def _operation(self, month='2026-09-01', **values):
+        values.setdefault('bill_ids', [Command.set(self.env['tha.staff.credit'].search([
+            ('company_id', '=', values.get('company_id', self.company.id))]).ids)])
         return self.env['tha.staff.credit.operation'].create(dict({'company_id': self.company.id, 'month': month}, **values))
 
     def _generate(self, month='2026-09-01'):
@@ -277,3 +279,76 @@ class TestStaffCredit(TransactionCase):
         bill = self._bill(source=invoice.line_ids.filtered(lambda l: l.account_id == self.account))
         self.assertEqual(bill.source_move_id, invoice)
         self.assertEqual(bill.amount, 300)
+
+    def test_xml_development_loader_all_views(self):
+        from odoo.addons.base.models.ir_ui_view import get_view_arch_from_file
+        from odoo.tools import file_path
+        from lxml import etree
+
+        # Production uses --dev=xml: it reads the source architecture rather
+        # than only the stored database arch. Include the search view, too.
+        for xmlid in ('view_credit_list', 'view_credit_form', 'view_credit_search',
+                      'view_config_form', 'view_operation'):
+            with self.subTest(view=xmlid):
+                view = self.env.ref('tha_vhg_staff_credit_report.' + xmlid)
+                arch = get_view_arch_from_file(file_path(view.arch_fs),
+                                              'tha_vhg_staff_credit_report.' + xmlid)
+                self.assertIsNotNone(etree.fromstring(arch))
+        for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
+                             ('tha.staff.credit.config', ['form']),
+                             ('tha.staff.credit.operation', ['form'])]:
+            result = self.env[model].with_user(self.manager).get_views(
+                [(False, kind) for kind in types], {'toolbar': True})
+            self.assertEqual(set(result['views']), set(types))
+
+    def test_settings_button_rpc_with_no_selection(self):
+        from odoo.service.model import call_kw
+        action = call_kw(self.env['tha.staff.credit'].with_user(self.manager),
+                         'action_settings', [[]], {})
+        self.assertEqual(action['res_model'], 'tha.staff.credit.config')
+        self.assertEqual(action['res_id'], self.config.id)
+        with self.assertRaises(AccessError):
+            call_kw(self.env['tha.staff.credit'].with_user(self.reader),
+                    'action_settings', [[]], {})
+
+    def test_selected_bills_only_and_incremental_staff_draft(self):
+        first, second = self._bill(300), self._bill(600)
+        operation = self._operation(bill_ids=[Command.set(first.ids)]).with_user(self.manager)
+        move = self.env['account.move'].search(operation.action_generate()['domain'])
+        self.assertEqual(move.line_ids.tha_staff_credit_id, first)
+        self.assertEqual(sum(move.line_ids.mapped('debit')), 100)
+        operation.bill_ids = first | second
+        merged = self.env['account.move'].search(operation.action_generate()['domain'])
+        self.assertEqual(merged, move)
+        self.assertEqual(merged.line_ids.tha_staff_credit_id, first | second)
+        self.assertEqual(sum(merged.line_ids.mapped('debit')), 300)
+        operation.action_generate()
+        self.assertEqual(len(move.line_ids), 3)
+        move.action_post()
+        self.assertEqual((first._settled_at(), second._settled_at()), (100, 200))
+
+    def test_selected_single_bill_can_post_without_other_staff_bills(self):
+        first = self._bill(300)
+        second = self._bill(600)
+        operation = self._operation(bill_ids=[Command.set(first.ids)]).with_user(self.manager)
+        move = self.env['account.move'].search(operation.action_generate()['domain'])
+        move.action_post()
+        self.assertEqual(second._settled_at(), 0)
+        operation.bill_ids = second
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            operation.action_generate()
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            self._operation(bill_ids=[Command.clear()]).with_user(self.manager).action_generate()
+
+    def test_form_and_list_selection_context(self):
+        first, second = self._bill(), self._bill()
+        model = self.env['tha.staff.credit.operation'].with_context(
+            default_mode='deductions', active_model='tha.staff.credit', active_ids=first.ids)
+        wizard = model.create({'month': '2026-09-01'})
+        self.assertEqual(wizard.bill_ids, first)
+        wizard = model.with_context(active_ids=(first | second).ids).create({'month': '2026-09-01'})
+        self.assertEqual(wizard.bill_ids, first | second)
+        from lxml import etree
+        view = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_list').arch_db)
+        button = view.xpath('//header/button[@string="Generate Monthly Deductions"]')[0]
+        self.assertNotEqual(button.get('display'), 'always')

@@ -1,6 +1,6 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Fresh-install module, version 19.0.2.0.3. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. The previous register/report/import/accounts screens and PDF/native accounting report have been removed.
+Fresh-install module, version 19.0.2.0.6. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. The previous register/report/import/accounts screens and PDF/native accounting report have been removed.
 
 ## Setup and bills
 
@@ -14,9 +14,9 @@ Set Repayment from and installment count, then **Generate Repayment Plan**. Equa
 
 ## Monthly review
 
-Click **Generate Monthly Deductions**, choose company, month and optionally staff. The operation includes all scheduled bills for each selected staff member, independent of the bill list's current search/selection. It creates one month-end **draft** per staff member: Dr salary expense / Cr Staff Credit, with a separate credit line per bill. Review and post using normal Accounting actions. This does not run payroll, create original bills, automatically post, or reconcile receivables.
+Open a saved staff-credit bill and click **Generate Monthly Deductions**, or select multiple bill rows in the list to reveal the same action. Choose the month; only those bills are included. The selected bills are shown in the wizard and must belong to one company. It creates one month-end **draft** per staff member: Dr salary expense / Cr Staff Credit, with a separate credit line per bill. Review and post using normal Accounting actions. This does not run payroll, create original bills, automatically post, or reconcile receivables.
 
-Repeated generation opens existing entries, including posted/cancelled entries. To change an unused batch (including adding a newly registered bill), delete its draft and generate it again. Linked installments are protected until draft deletion. Posted deductions require standard reversal; a reversal restores the staff balance from its accounting date onward. The original month's batch is not generated again after reversal. Draft reservations and posted settlements cannot exceed original debt. Foreign-currency source items are rejected.
+Repeated generation opens the existing entry without duplicating selected bills. Selecting additional bills for the same staff and month adds their installments to that staff member's existing draft and updates its salary debit. Additional bills cannot be added to a posted/cancelled batch; review it instead. To replace an unused batch, delete its draft and generate it again. Linked installments are protected until draft deletion. Posted deductions require standard reversal; a reversal restores the staff balance from its accounting date onward. The original month's batch is not generated again after reversal. Draft reservations and posted settlements cannot exceed original debt. Foreign-currency source items are rejected.
 
 Use **Existing settlements** for historical repayments or adjustments, allocating existing posted credit items to bills. Generated credits count automatically and cannot be allocated again. Remove manual source links before correcting/reversing those external entries; retain approved exports for audit. Original bill sources are protected while linked.
 

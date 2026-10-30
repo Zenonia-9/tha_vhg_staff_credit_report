@@ -2,14 +2,15 @@
 <odoo>
     <record id="view_operation" model="ir.ui.view">
         <field name="name">tha.staff.credit.operation.form</field><field name="model">tha.staff.credit.operation</field>
-        <field name="arch" type="xml"><form string="Staff Credit Report">
-            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month"/>
+        <field name="arch" type="xml">
+            <form string="Staff Credit Report">
+            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month"/><field name="bill_ids" widget="many2many_tags" readonly="1" invisible="mode != 'deductions'"/>
                 <field name="employee_id" domain="[('company_id', '=', company_id)]"/>
                 <field name="department_id" invisible="mode == 'deductions'"/>
                 <field name="category" invisible="mode == 'deductions'"/>
                 <field name="status" invisible="mode == 'deductions'"/>
             </group>
-            <p invisible="mode != 'deductions'">Creates one month-end draft per staff member, including all their scheduled bills in the selected company. Existing batches open for review. To change an unused batch, delete its draft and generate it again. Posting is a separate Accounting action.</p>
+            <p invisible="mode != 'deductions'">Creates one month-end draft per staff member, using only the selected staff credit bills. Missing selected bills are added to an existing draft; posted batches open only when all selected bills are already included. To change an unused batch, delete its draft and generate it again. Posting is a separate Accounting action.</p>
             <p invisible="mode != 'export'">Settlement and balance include posted entries through month-end. The monthly amount and Times show the repayment plan. Filters here determine the Excel rows.</p>
             <footer>
                 <button name="action_export" type="object" string="Export Excel" class="btn-primary" invisible="mode != 'export'"/>

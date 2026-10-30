@@ -6,7 +6,7 @@
             <list string="Staff Credit Report" decoration-muted="balance == 0" import="0">
                 <header>
                     <button name="%(action_export)d" type="action" string="Export Excel" display="always"/>
-                    <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" display="always" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager"/>
                     <button name="action_settings" type="object" string="Settings" display="always" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
                 <field name="name"/><field name="charge_date"/><field name="employee_id"/><field name="department_id"/>
@@ -84,7 +84,8 @@
     </record>
     <record id="view_credit_search" model="ir.ui.view">
         <field name="name">tha.staff.credit.search</field><field name="model">tha.staff.credit</field>
-        <field name="arch" type="xml"><search>
+        <field name="arch" type="xml">
+            <search>
             <field name="name"/><field name="employee_id"/><field name="department_id"/>
             <field name="source_move_id"/><field name="anzer_reference"/><field name="description"/><field name="category"/>
             <filter name="staff" string="Staff" context="{'group_by': 'employee_id'}"/>
@@ -93,7 +94,8 @@
     </record>
     <record id="view_config_form" model="ir.ui.view">
         <field name="name">tha.staff.credit.config.form</field><field name="model">tha.staff.credit.config</field>
-        <field name="arch" type="xml"><form string="Staff Credit Settings">
+        <field name="arch" type="xml">
+            <form string="Staff Credit Settings">
             <group><field name="company_id"/>
                 <field name="account_id" domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable'), ('reconcile', '=', True)]"/>
                 <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost'])]"/>

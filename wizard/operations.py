@@ -4,7 +4,7 @@ import io
 import xlsxwriter
 from dateutil.relativedelta import relativedelta
 
-from odoo import Command, fields, models, _
+from odoo import Command, api, fields, models, _
 from odoo.exceptions import AccessError, UserError
 
 from ..models.staff_credit import CATEGORIES
@@ -18,6 +18,7 @@ class CreditOperation(models.TransientModel):
     mode = fields.Selection([('export', 'Export Excel'), ('deductions', 'Generate Monthly Deductions')],
                             required=True, default='export')
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
+    bill_ids = fields.Many2many('tha.staff.credit', string='Selected staff credit bills', check_company=True)
     month = fields.Date(required=True, default=lambda s: fields.Date.context_today(s).replace(day=1))
     employee_id = fields.Many2one('hr.employee.public', check_company=True)
     department_id = fields.Many2one('hr.department', check_company=True)
@@ -27,12 +28,33 @@ class CreditOperation(models.TransientModel):
     file_data = fields.Binary(attachment=False, readonly=True)
     filename = fields.Char(readonly=True)
 
+    @api.model
+    def default_get(self, names):
+        values = super().default_get(names)
+        if values.get('mode') == 'deductions' and 'bill_ids' in names:
+            ids = self.env.context.get('active_ids') or [self.env.context.get('active_id')]
+            bills = self.env['tha.staff.credit'].browse([i for i in ids if i]).exists() if self.env.context.get('active_model') == 'tha.staff.credit' else self.env['tha.staff.credit']
+            bills.check_access('read')
+            if len(bills.company_id) > 1:
+                raise UserError(_('Select staff credit bills from one company at a time.'))
+            values['bill_ids'] = [Command.set(bills.ids)]
+            if bills:
+                values['company_id'] = bills.company_id.id
+        return values
+
     def _bills(self):
         self.ensure_one()
         if self.company_id not in self.env.companies:
             raise AccessError(_('Select an allowed company.'))
         start = self.month.replace(day=1)
         domain = [('company_id', '=', self.company_id.id), ('charge_date', '<=', fields.Date.end_of(start, 'month'))]
+        if self.mode == 'deductions':
+            if not self.bill_ids:
+                raise UserError(_('Open a staff credit bill or select bills in the list before generating deductions.'))
+            self.bill_ids.check_access('read')
+            if self.bill_ids.company_id != self.company_id:
+                raise UserError(_('All selected staff credit bills must belong to the selected company.'))
+            domain.append(('id', 'in', self.bill_ids.ids))
         if self.employee_id:
             domain.append(('employee_id', '=', self.employee_id.id))
         if self.mode == 'export':
@@ -128,12 +150,16 @@ class CreditOperation(models.TransientModel):
         for employee in schedules.credit_id.employee_id:
             batch = batches.search([('company_id', '=', self.company_id.id), ('employee_id', '=', employee.id),
                                     ('month', '=', start)], limit=1)
-            if batch.move_id:
-                moves |= batch.move_id
-                continue
             selected = schedules.filtered(lambda s: s.credit_id.employee_id == employee)
-            if selected.deduction_line_ids:
-                raise UserError(_('Some installments already have deduction links. Review the existing entries.'))
+            move = batch.move_id
+            missing = selected - batch.schedule_ids if move else selected
+            if move and not missing:
+                moves |= move
+                continue
+            if move and move.state != 'draft':
+                raise UserError(_('This staff member already has a posted or cancelled deduction for this month. New bills cannot be added; review the existing entry.'))
+            if missing.deduction_line_ids:
+                raise UserError(_('Some selected installments already have deduction links. Review the existing entries.'))
             for bill in selected.credit_id:
                 if bill.currency_id.compare_amounts(sum(bill.schedule_ids.mapped('amount')), bill.amount) != 0:
                     raise UserError(_('The repayment plan for %s must total its original bill.', bill.name))
@@ -141,21 +167,30 @@ class CreditOperation(models.TransientModel):
                     raise UserError(_('The installment count for %s differs from its plan.', bill.name))
             if not batch:
                 batch = batches.create({'company_id': self.company_id.id, 'employee_id': employee.id, 'month': start})
-            total = sum(selected.mapped('amount'))
-            move = self.env['account.move'].create({
-                'company_id': self.company_id.id, 'journal_id': config.journal_id.id,
-                'date': fields.Date.end_of(start, 'month'), 'tha_staff_credit_batch_id': batch.id,
-                'ref': 'Staff Credit - %s - %s' % (employee.name, start.strftime('%Y-%m')),
-                'line_ids': [Command.create({'name': 'Staff Credit salary deduction - %s' % employee.name,
-                                             'account_id': config.salary_account_id.id, 'debit': total})] + [
-                    Command.create({'name': '%s - %s' % (s.credit_id.name, s.credit_id.description),
-                                    'account_id': s.credit_id.source_line_id.account_id.id,
-                                    'partner_id': s.credit_id.partner_id.id, 'credit': s.amount,
-                                    'date_maturity': fields.Date.end_of(start, 'month'),
-                                    'tha_staff_credit_id': s.credit_id.id, 'tha_staff_credit_schedule_id': s.id})
-                    for s in selected],
-            })
-            batch.move_id = move
+            commands = [Command.create({
+                'name': '%s - %s' % (s.credit_id.name, s.credit_id.description),
+                'account_id': s.credit_id.source_line_id.account_id.id,
+                'partner_id': s.credit_id.partner_id.id, 'credit': s.amount,
+                'date_maturity': fields.Date.end_of(start, 'month'),
+                'tha_staff_credit_id': s.credit_id.id, 'tha_staff_credit_schedule_id': s.id,
+            }) for s in missing]
+            if move:
+                salary = move.line_ids.filtered(lambda l: not l.tha_staff_credit_id)
+                if len(salary) != 1 or salary.account_id != config.salary_account_id or move.journal_id != config.journal_id:
+                    raise UserError(_('The existing draft no longer matches Settings. Delete it and generate again.'))
+                total = sum(move.line_ids.filtered('tha_staff_credit_id').mapped('credit')) + sum(missing.mapped('amount'))
+                move.write({'line_ids': [Command.update(salary.id, {'debit': total})] + commands})
+                batch.schedule_ids = batch.schedule_ids | missing
+            else:
+                total = sum(selected.mapped('amount'))
+                move = self.env['account.move'].create({
+                    'company_id': self.company_id.id, 'journal_id': config.journal_id.id,
+                    'date': fields.Date.end_of(start, 'month'), 'tha_staff_credit_batch_id': batch.id,
+                    'ref': 'Staff Credit - %s - %s' % (employee.name, start.strftime('%Y-%m')),
+                    'line_ids': [Command.create({'name': 'Staff Credit salary deduction - %s' % employee.name,
+                                                 'account_id': config.salary_account_id.id, 'debit': total})] + commands,
+                })
+                batch.write({'move_id': move.id, 'schedule_ids': [Command.set(selected.ids)]})
             selected.credit_id._check_capacity()
             for bill in selected.credit_id:
                 bill.message_post(body=_('Created monthly deduction draft: %s', move.ref))

@@ -214,7 +214,6 @@ class StaffCredit(models.Model):
         }) for i in range(self.installment_count)]})
         self.message_post(body=_('Generated monthly repayment plan.'))
 
-    @api.model
     def action_settings(self):
         if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
             raise AccessError(_('Only Staff Credit managers may configure settings.'))
@@ -316,4 +315,5 @@ class CreditBatch(models.Model):
     employee_id = fields.Many2one('hr.employee.public', required=True, check_company=True)
     month = fields.Date(required=True)
     move_id = fields.Many2one('account.move', check_company=True, ondelete='set null', readonly=True)
+    schedule_ids = fields.Many2many('tha.staff.credit.schedule', check_company=True, readonly=True)
     _staff_month_unique = models.Constraint('UNIQUE(company_id, employee_id, month)', 'A monthly deduction already exists for this staff member.')

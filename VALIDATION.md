@@ -35,3 +35,19 @@ docker exec odoo_19 odoo -d THA -u tha_vhg_staff_credit_report --stop-after-init
 - Duplicate generation is protected by a unique staff/month constraint and serialized company configuration writes. A simultaneous multi-client load test was not performed.
 
 Post-restart server verification: installed version 19.0.2.0.3; 1,599 accounting entries; zero new staff bills and deduction batches; one Staff Credit Report menu under Accounting/Reporting/Other Reports; administrator list, bill form, settings form and operation form compiled successfully; obsolete report/import/handler models absent.
+
+## Opening error correction — 2026-10-30
+
+The user reported `TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'` when opening Staff Credit Report. The server runs `--dev=xml`; its file view loader concatenates `field_arch.text` with child XML. Inline `<field name="arch" type="xml"><search>` (also the settings and operation forms) supplied no text node. Added a newline before each architecture root without changing core Odoo. Added a regression covering all five source views through `get_view_arch_from_file` and list/form/search compilation.
+
+The actual report and Excel dialog were verified in the user's existing signed-in Chrome tab without another login. The Settings button exposed a separate RPC argument mismatch: `@api.model` incorrectly retained the selected-record argument. Made it a normal recordset button method and added a `call_kw` regression for no selection and reader denial. Version bumped to 19.0.2.0.5.
+
+## Selected-bill deduction workflow — 2026-10-30
+
+User refinement: deduction generation belongs on each staff-credit form and must also work from multiple selected list rows. The list button now requires a selection. The wizard receives those active bill IDs, displays them, derives their company, and refuses unselected or cross-company generation. It no longer expands a selection to every other bill for that employee. Grouping remains one entry per staff/month; additional selected bills append to an existing draft atomically with the matching salary debit, while posted/cancelled batches refuse new bills. Each batch retains its chosen installments for posting validation. Version 19.0.2.0.6.
+
+Added regressions for selected-only form/list defaults, hidden list action without selection, incremental staff draft merging without duplicates, posting a selected subset, no-selection refusal, and refusal to append bills after posting.
+
+Final version 19.0.2.0.6 validation: Python syntax, manifest and all five XML source loader checks passed. Local THA upgrade succeeded and **21 tests passed, 0 failures, 0 errors** (`logs/staff_credit_selected_bills.log`; Odoo statistics include two additional setup phases). This supersedes the earlier 16/18-test results. Settings RPC and all selected-bill workflow regressions passed.
+
+Post-update runtime: odoo_19 restarted successfully and logs/server.log shows the THA registry loaded. Report and Export Excel dialog opening were confirmed in the user's existing Chrome session after the XML correction. The final post-restart browser refresh timed out in Chrome's focus/snapshot command; no further login or test data entry was attempted. Settings and selected-form/list behavior are covered by the passing RPC/ORM and XML regressions. No production changes were made.
