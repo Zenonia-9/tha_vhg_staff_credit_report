@@ -207,10 +207,13 @@ class TestStaffCredit(TransactionCase):
             labels = [''.join(s.itertext()) for s in strings]
             self.assertIn('Settlement up to Sep\'26', labels)
             self.assertIn('Balance for Sep\'26', labels)
-            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='4']/m:c", ns)), 14)
+            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='4']/m:c", ns)), 13)
+            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='6']/m:c", ns)), 14)
+            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='7']/m:c", ns)), 5)
             self.assertFalse(sheet.findall('.//m:f', ns))
             self.assertIsNotNone(sheet.find('m:sheetViews/m:sheetView/m:pane', ns))
             self.assertIn('FFBDD7EE', book.read('xl/styles.xml').decode())
+            self.assertIn('FFE2F0D9', book.read('xl/styles.xml').decode())
         operation.action_export()
         self.assertTrue(base64.b64decode(operation.file_data).startswith(b'PK'))
 
@@ -296,20 +299,35 @@ class TestStaffCredit(TransactionCase):
                 self.assertIsNotNone(etree.fromstring(arch))
         for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
                              ('tha.staff.credit.config', ['form']),
-                             ('tha.staff.credit.operation', ['form'])]:
+                             ('tha.staff.credit.operation', ['form']),
+                             ('tha.staff.credit.settings.wizard', ['form'])]:
             result = self.env[model].with_user(self.manager).get_views(
                 [(False, kind) for kind in types], {'toolbar': True})
             self.assertEqual(set(result['views']), set(types))
 
-    def test_settings_button_rpc_with_no_selection(self):
-        from odoo.service.model import call_kw
-        action = call_kw(self.env['tha.staff.credit'].with_user(self.manager),
-                         'action_settings', [[]], {})
-        self.assertEqual(action['res_model'], 'tha.staff.credit.config')
-        self.assertEqual(action['res_id'], self.config.id)
+    def test_settings_button_opens_bill_scoped_override(self):
+        bill = self._bill()
+        action = bill.with_user(self.manager).action_settings()
+        self.assertEqual(action['res_model'], 'tha.staff.credit.settings.wizard')
+        self.assertEqual(action['context']['default_credit_id'], bill.id)
+        wizard = self.env['tha.staff.credit.settings.wizard'].with_user(self.manager).create({
+            'company_id': self.company.id, 'credit_id': bill.id,
+            'account_id': self.account.id, 'salary_account_id': self.salary.id,
+            'journal_id': self.journal.id, 'save_as_default': False})
+        wizard.action_apply()
+        self.assertEqual(self.config.journal_id, self.journal)
         with self.assertRaises(AccessError):
             call_kw(self.env['tha.staff.credit'].with_user(self.reader),
                     'action_settings', [[]], {})
+
+    def test_export_form_defaults_follow_active_bill(self):
+        bill = self._bill()
+        operation = self.env['tha.staff.credit.operation'].with_user(self.manager).with_context(
+            default_mode='export', active_model='tha.staff.credit', active_id=bill.id).default_get(
+                ['mode', 'company_id', 'employee_id', 'department_id', 'category'])
+        self.assertEqual(operation['employee_id'], bill.employee_id.id)
+        self.assertEqual(operation['department_id'], bill.department_id.id)
+        self.assertEqual(operation['category'], bill.category)
 
     def test_selected_bills_only_and_incremental_staff_draft(self):
         first, second = self._bill(300), self._bill(600)

@@ -3,6 +3,7 @@ credit_reader,Staff bills reader,model_tha_staff_credit,group_reader,1,0,0,0
 credit_manager,Staff bills manager,model_tha_staff_credit,group_manager,1,1,1,1
 config_reader,Staff settings reader,model_tha_staff_credit_config,group_reader,1,0,0,0
 config_manager,Staff settings manager,model_tha_staff_credit_config,group_manager,1,1,1,1
+settings_wizard_manager,Staff settings override wizard,model_tha_staff_credit_settings_wizard,group_manager,1,1,1,1
 schedule_reader,Staff plan reader,model_tha_staff_credit_schedule,group_reader,1,0,0,0
 schedule_manager,Staff plan manager,model_tha_staff_credit_schedule,group_manager,1,1,1,1
 allocation_reader,Staff settlement reader,model_tha_staff_credit_allocation,group_reader,1,0,0,0

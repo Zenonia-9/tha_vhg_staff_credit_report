@@ -25,6 +25,9 @@ class CreditOperation(models.TransientModel):
     category = fields.Selection(CATEGORIES)
     status = fields.Selection([('all', 'All'), ('open', 'Open at month end'), ('settled', 'Settled at month end')],
                               default='all', required=True)
+    account_id = fields.Many2one('account.account', string='Staff Credit account', check_company=True)
+    salary_account_id = fields.Many2one('account.account', string='Salary expense account', check_company=True)
+    journal_id = fields.Many2one('account.journal', string='Deduction journal', check_company=True)
     file_data = fields.Binary(attachment=False, readonly=True)
     filename = fields.Char(readonly=True)
 
@@ -40,6 +43,14 @@ class CreditOperation(models.TransientModel):
             values['bill_ids'] = [Command.set(bills.ids)]
             if bills:
                 values['company_id'] = bills.company_id.id
+        elif values.get('mode', self.env.context.get('default_mode')) == 'export':
+            active = self.env.context.get('active_id')
+            if self.env.context.get('active_model') == 'tha.staff.credit' and active:
+                bill = self.env['tha.staff.credit'].browse(active).exists()
+                if bill and {'employee_id', 'department_id', 'category'} & set(names):
+                    bill.check_access('read')
+                    values.update(company_id=bill.company_id.id, employee_id=bill.employee_id.id,
+                                  department_id=bill.department_id.id, category=bill.category)
         return values
 
     def _bills(self):
@@ -86,26 +97,40 @@ class CreditOperation(models.TransientModel):
         self.ensure_one()
         output = io.BytesIO()
         book = xlsxwriter.Workbook(output, {'in_memory': True, 'strings_to_formulas': False, 'strings_to_urls': False})
-        header = book.add_format({'bold': True, 'bg_color': '#BDD7EE', 'border': 1, 'text_wrap': True, 'valign': 'vcenter'})
+        title = book.add_format({'bold': True, 'bg_color': '#BDD7EE', 'border': 1})
+        header = book.add_format({'bold': True, 'bg_color': '#D9E2F3', 'border': 1, 'text_wrap': True, 'align': 'center', 'valign': 'vcenter'})
+        subheader = book.add_format({'bold': True, 'bg_color': '#D9E2F3', 'border': 1, 'text_wrap': True, 'align': 'center', 'valign': 'vcenter'})
         text = book.add_format({'border': 1, 'text_wrap': True, 'valign': 'top'})
         money = book.add_format({'border': 1, 'num_format': '#,##0.00;[Red](#,##0.00);-'})
         date = book.add_format({'border': 1, 'num_format': 'dd-mmm-yyyy'})
+        total_label = book.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1})
+        total_money = book.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1, 'num_format': '#,##0.00;[Red](#,##0.00);-'})
         sheet = book.add_worksheet('Staff Credit Report')
         label = self.month.strftime("%b'%y")
         sheet.merge_range(0, 0, 0, 13, '%s - Staff Credit Report - %s' % (self.company_id.name, label), header)
         sheet.merge_range(1, 0, 1, 13, 'Currency: %s | Month amount is planned; settlement and balance include posted entries through month-end.' % self.company_id.currency_id.name, text)
-        headings = ['No', 'Date', 'Staff name', 'Department', 'Name (Patient & Others)', '100% Bill',
-                    'Settlement up to ' + label, 'Times', label, 'Balance for ' + label,
-                    'Remark', 'System Reference', 'Anzer System invoice', 'Odoo System invoice']
-        sheet.write_row(3, 0, headings, header)
+        # Two header rows mirror the supplied workbook: grouped settlement/month columns
+        # sit above concise subheadings used for the actual data columns.
+        for col, value in enumerate(['No', 'Date', 'Staff name', 'Department', 'Name (Patient & Others)', '100% Bill']):
+            sheet.merge_range(3, col, 4, col, value, header)
+        sheet.merge_range(3, 6, 3, 7, 'Settlement', header)
+        sheet.merge_range(3, 8, 3, 8, label, header)
+        sheet.merge_range(3, 9, 4, 9, 'Balance for ' + label, header)
+        for col, value in ((10, 'Remark'), (11, 'System Reference'), (12, 'Anzer System invoice'), (13, 'Odoo System invoice')):
+            sheet.merge_range(3, col, 4, col, value, header)
+        sheet.write(4, 6, 'up to ' + label, subheader)
+        sheet.write(4, 7, 'Times', subheader)
+        sheet.write(4, 8, label, subheader)
         rows = self._rows()
-        for number, row in enumerate(rows, 4):
+        for number, row in enumerate(rows, 5):
             for col, value in enumerate(row):
                 sheet.write(number, col, value, money if col in (5, 6, 8, 9) else date if col == 1 else text)
-        total = 4 + len(rows)
-        sheet.write(total, 0, 'Total', header)
+        total = 5 + len(rows)
+        sheet.write(total, 0, 'Total', total_label)
+        for col in (1, 2, 3, 4, 7, 10, 11, 12, 13):
+            sheet.write_blank(total, col, None, total_label)
         for col in (5, 6, 8, 9):
-            sheet.write_number(total, col, sum(row[col] for row in rows), money)
+            sheet.write_number(total, col, sum(row[col] for row in rows), total_money)
         sheet.set_column(0, 0, 6)
         sheet.set_column(1, 1, 15)
         sheet.set_column(2, 3, 24)
@@ -113,13 +138,14 @@ class CreditOperation(models.TransientModel):
         sheet.set_column(5, 9, 20)
         sheet.set_column(7, 7, 10)
         sheet.set_column(10, 13, 28)
-        sheet.set_row(3, 48)
-        sheet.freeze_panes(4, 4)
-        sheet.autofilter(3, 0, max(3, total - 1), 13)
+        sheet.set_row(3, 38)
+        sheet.set_row(4, 30)
+        sheet.freeze_panes(5, 4)
+        sheet.autofilter(4, 0, max(4, total - 1), 13)
         sheet.set_landscape()
         sheet.set_paper(8)
         sheet.fit_to_pages(1, 0)
-        sheet.repeat_rows(0, 3)
+        sheet.repeat_rows(0, 4)
         sheet.print_area(0, 0, total, 13)
         book.close()
         return output.getvalue()
@@ -139,9 +165,17 @@ class CreditOperation(models.TransientModel):
         self.mode = 'deductions'
         bills = self._bills()
         config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
-        if not config:
+        override = (self.env.context.get('tha_staff_credit_account_id'),
+                    self.env.context.get('tha_staff_credit_salary_account_id'),
+                    self.env.context.get('tha_staff_credit_journal_id'))
+        if all(override):
+            config_values = {'account_id': override[0], 'salary_account_id': override[1], 'journal_id': override[2]}
+            config = self.env['tha.staff.credit.config'].new(dict(config_values, company_id=self.company_id.id))
+            config._check_settings()
+        elif not config:
             raise UserError(_('Configure Staff Credit Settings first.'))
-        config._serialize()
+        if config.id:
+            config._serialize()
         start = self.month.replace(day=1)
         moves = self.env['account.move']
         batches = self.env['tha.staff.credit.batch']
@@ -200,3 +234,49 @@ class CreditOperation(models.TransientModel):
         return {'type': 'ir.actions.act_window', 'name': _('Staff Credit Monthly Deductions'),
                 'res_model': 'account.move', 'view_mode': 'list,form', 'domain': [('id', 'in', moves.ids)],
                 'context': {'create': False}}
+
+
+class CreditSettingsWizard(models.TransientModel):
+    _name = 'tha.staff.credit.settings.wizard'
+    _description = 'Staff Credit Settings Override'
+    _check_company_auto = True
+
+    company_id = fields.Many2one('res.company', required=True, readonly=True)
+    credit_id = fields.Many2one('tha.staff.credit', required=True, readonly=True, check_company=True)
+    account_id = fields.Many2one('account.account', required=True, check_company=True, string='Staff Credit account')
+    salary_account_id = fields.Many2one('account.account', required=True, check_company=True, string='Salary expense account')
+    journal_id = fields.Many2one('account.journal', required=True, check_company=True, string='Deduction journal')
+    save_as_default = fields.Boolean(string='Save as company default', default=False)
+
+    @api.model
+    def default_get(self, names):
+        values = super().default_get(names)
+        company = self.env['res.company'].browse(values.get('company_id', self.env.company.id))
+        config = self.env['tha.staff.credit.config'].search([('company_id', '=', company.id)], limit=1)
+        for field, config_field, code in (
+                ('account_id', 'account_id', '130100'), ('salary_account_id', 'salary_account_id', '701010')):
+            if field in names and not values.get(field):
+                values[field] = (getattr(config, config_field).id if config else self.env['account.account'].search([
+                    ('company_ids', 'in', company.id), ('code', '=', code)], limit=1).id)
+        if 'journal_id' in names and not values.get('journal_id') and config:
+            values['journal_id'] = config.journal_id.id
+        return values
+
+    def action_apply(self):
+        self.ensure_one()
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may configure settings.'))
+        if self.save_as_default:
+            config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
+            values = {'account_id': self.account_id.id, 'salary_account_id': self.salary_account_id.id,
+                      'journal_id': self.journal_id.id}
+            if config:
+                config.write(values)
+            else:
+                self.env['tha.staff.credit.config'].create(dict(values, company_id=self.company_id.id))
+        return {'type': 'ir.actions.act_window', 'name': _('Staff Credit Bill'),
+                'res_model': 'tha.staff.credit', 'res_id': self.credit_id.id,
+                'view_mode': 'form', 'target': 'current',
+                'context': {'tha_staff_credit_account_id': self.account_id.id,
+                            'tha_staff_credit_salary_account_id': self.salary_account_id.id,
+                            'tha_staff_credit_journal_id': self.journal_id.id}}

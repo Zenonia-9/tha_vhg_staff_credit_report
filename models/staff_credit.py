@@ -217,10 +217,15 @@ class StaffCredit(models.Model):
     def action_settings(self):
         if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
             raise AccessError(_('Only Staff Credit managers may configure settings.'))
-        config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.env.company.id)], limit=1)
+        self.ensure_one()
+        config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
         return {'type': 'ir.actions.act_window', 'name': _('Staff Credit Settings'),
-                'res_model': 'tha.staff.credit.config', 'res_id': config.id or False,
-                'view_mode': 'form', 'target': 'new'}
+                'res_model': 'tha.staff.credit.settings.wizard', 'view_mode': 'form', 'target': 'new',
+                'context': {'default_company_id': self.company_id.id, 'default_credit_id': self.id,
+                            'default_account_id': config.account_id.id if config else False,
+                            'default_salary_account_id': config.salary_account_id.id if config else False,
+                            'default_journal_id': config.journal_id.id if config else False,
+                            'default_save_as_default': False}}
 
 
 class CreditSchedule(models.Model):
