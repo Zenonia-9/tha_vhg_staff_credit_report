@@ -4,14 +4,15 @@
         <field name="name">tha.staff.credit.operation.form</field><field name="model">tha.staff.credit.operation</field>
         <field name="arch" type="xml">
             <form string="Staff Credit Report">
-            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month"/><field name="bill_ids" widget="many2many_tags" readonly="1" force_save="1" invisible="mode != 'deductions'"/>
-                <field name="employee_id" domain="[('company_id', '=', company_id)]"/>
+            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month" placeholder="Leave blank to include all months"/><field name="bill_ids" widget="many2many_tags" readonly="1" force_save="1" invisible="mode != 'deductions'"/>
+                <field name="employee_ids" string="Selected employees" widget="many2many_tags" readonly="1" invisible="not bill_ids"/>
+                <field name="employee_id" domain="[('company_id', '=', company_id)]" invisible="mode == 'deductions'"/>
                 <field name="department_id" invisible="mode == 'deductions'"/>
                 <field name="category" invisible="mode == 'deductions'"/>
                 <field name="status" invisible="mode == 'deductions'"/>
             </group>
             <p invisible="mode != 'deductions'">Creates one month-end draft per staff member, using only the selected staff credit bills. Missing selected bills are added to an existing draft; posted batches open only when all selected bills are already included. To change an unused batch, delete its draft and generate it again. Posting is a separate Accounting action.</p>
-            <p invisible="mode != 'export'">Settlement and balance include posted entries through month-end. The monthly amount and Times show the repayment plan. Filters here determine the Excel rows.</p>
+            <p invisible="mode != 'export'">Selected employees are shown for reference. Leave Month, Employee, Department, and Category blank to include all matching records. Settlement and balance are calculated through month-end when a month is selected, or through today when Month is blank. The monthly amount and Times show the repayment plan.</p>
             <footer>
                 <button name="action_export" type="object" string="Export Excel" class="btn-primary" invisible="mode != 'export'"/>
                 <button name="action_generate" type="object" string="Generate / Open Drafts" class="btn-primary" invisible="mode != 'deductions'" groups="tha_vhg_staff_credit_report.group_manager"/>

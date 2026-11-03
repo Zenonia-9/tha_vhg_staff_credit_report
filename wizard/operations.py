@@ -19,7 +19,10 @@ class CreditOperation(models.TransientModel):
                             required=True, default='export')
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
     bill_ids = fields.Many2many('tha.staff.credit', string='Selected staff credit bills', check_company=True)
-    month = fields.Date(required=True, default=lambda s: fields.Date.context_today(s).replace(day=1))
+    employee_ids = fields.Many2many('hr.employee.public', compute='_compute_employee_ids', string='Employees', readonly=True)
+    month = fields.Date(string='Month (leave blank for all)')
+    date_from = fields.Date(string='Charge date from')
+    date_to = fields.Date(string='Charge date to')
     employee_id = fields.Many2one('hr.employee.public', check_company=True)
     department_id = fields.Many2one('hr.department', check_company=True)
     category = fields.Selection(CATEGORIES)
@@ -31,9 +34,17 @@ class CreditOperation(models.TransientModel):
     file_data = fields.Binary(attachment=False, readonly=True)
     filename = fields.Char(readonly=True)
 
+    @api.depends('bill_ids.employee_id')
+    def _compute_employee_ids(self):
+        for operation in self:
+            operation.employee_ids = operation.bill_ids.employee_id
+
     @api.model
     def default_get(self, names):
         values = super().default_get(names)
+        if values.get('mode', self.env.context.get('default_mode')) == 'deductions' and 'month' in names:
+            if not values.get('month'):
+                values['month'] = fields.Date.context_today(self).replace(day=1)
         if values.get('mode', self.env.context.get('default_mode')) == 'deductions' and 'bill_ids' in names:
             ids = self.env.context.get('active_ids') or [self.env.context.get('active_id')]
             bills = self.env['tha.staff.credit'].browse([i for i in ids if i]).exists() if self.env.context.get('active_model') == 'tha.staff.credit' else self.env['tha.staff.credit']
@@ -44,21 +55,41 @@ class CreditOperation(models.TransientModel):
             if bills:
                 values['company_id'] = bills.company_id.id
         elif values.get('mode', self.env.context.get('default_mode')) == 'export':
-            active = self.env.context.get('active_id')
-            if self.env.context.get('active_model') == 'tha.staff.credit' and active:
-                bill = self.env['tha.staff.credit'].browse(active).exists()
-                if bill and {'employee_id', 'department_id', 'category'} & set(names):
-                    bill.check_access('read')
-                    values.update(company_id=bill.company_id.id, employee_id=bill.employee_id.id,
-                                  department_id=bill.department_id.id, category=bill.category)
+            ids = self.env.context.get('active_ids') or [self.env.context.get('active_id')]
+            if self.env.context.get('active_model') == 'tha.staff.credit':
+                bills = self.env['tha.staff.credit'].browse([i for i in ids if i]).exists()
+                bills.check_access('read')
+                if 'bill_ids' in names:
+                    values['bill_ids'] = [Command.set(bills.ids)]
+                if bills and len(bills.company_id) == 1:
+                    values['company_id'] = bills.company_id.id
+                    if len(bills) == 1 and self.env.context.get('tha_from_credit_form'):
+                        bill = bills
+                        if 'employee_id' in names:
+                            values['employee_id'] = bill.employee_id.id
+                        if 'department_id' in names:
+                            values['department_id'] = bill.department_id.id
         return values
+
+    @api.onchange('employee_id')
+    def _onchange_employee_id(self):
+        if self.employee_id:
+            self.department_id = self.employee_id.department_id
+        else:
+            self.department_id = False
 
     def _bills(self):
         self.ensure_one()
         if self.company_id not in self.env.companies:
             raise AccessError(_('Select an allowed company.'))
-        start = self.month.replace(day=1)
-        domain = [('company_id', '=', self.company_id.id), ('charge_date', '<=', fields.Date.end_of(start, 'month'))]
+        start = self.month.replace(day=1) if self.month else False
+        domain = [('company_id', '=', self.company_id.id)]
+        if self.date_from:
+            domain.append(('charge_date', '>=', self.date_from))
+        if self.date_to:
+            domain.append(('charge_date', '<=', self.date_to))
+        if self.month:
+            domain.append(('charge_date', '<=', fields.Date.end_of(start, 'month')))
         if self.mode == 'deductions':
             if not self.bill_ids:
                 raise UserError(_('Open a staff credit bill or select bills in the list before generating deductions.'))
@@ -66,7 +97,7 @@ class CreditOperation(models.TransientModel):
             if self.bill_ids.company_id != self.company_id:
                 raise UserError(_('All selected staff credit bills must belong to the selected company.'))
             domain.append(('id', 'in', self.bill_ids.ids))
-        if self.employee_id:
+        if self.employee_id and self.mode == 'export':
             domain.append(('employee_id', '=', self.employee_id.id))
         if self.mode == 'export':
             if self.department_id:
@@ -77,7 +108,8 @@ class CreditOperation(models.TransientModel):
 
     def _rows(self):
         self.ensure_one()
-        start, end = self.month.replace(day=1), fields.Date.end_of(self.month, 'month')
+        end = fields.Date.end_of(self.month.replace(day=1), 'month') if self.month else fields.Date.context_today(self)
+        start = self.month.replace(day=1) if self.month else end.replace(day=1)
         rows = []
         for bill in self._bills():
             settled = bill._settled_at(end)
@@ -106,21 +138,20 @@ class CreditOperation(models.TransientModel):
         total_label = book.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1})
         total_money = book.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1, 'num_format': '#,##0.00;[Red](#,##0.00);-'})
         sheet = book.add_worksheet('Staff Credit Report')
-        label = self.month.strftime("%b'%y")
+        label = self.month.strftime("%b'%y") if self.month else 'All months'
         sheet.merge_range(0, 0, 0, 13, '%s - Staff Credit Report - %s' % (self.company_id.name, label), header)
         sheet.merge_range(1, 0, 1, 13, 'Currency: %s | Month amount is planned; settlement and balance include posted entries through month-end.' % self.company_id.currency_id.name, text)
         # Two header rows mirror the supplied workbook: grouped settlement/month columns
         # sit above concise subheadings used for the actual data columns.
         for col, value in enumerate(['No', 'Date', 'Staff name', 'Department', 'Name (Patient & Others)', '100% Bill']):
             sheet.merge_range(3, col, 4, col, value, header)
-        sheet.merge_range(3, 6, 3, 7, 'Settlement', header)
-        sheet.merge_range(3, 8, 3, 8, label, header)
+        sheet.merge_range(3, 6, 3, 8, 'Settlement', header)
+        sheet.write(4, 8, label, subheader)
         sheet.merge_range(3, 9, 4, 9, 'Balance for ' + label, header)
         for col, value in ((10, 'Remark'), (11, 'System Reference'), (12, 'Anzer System invoice'), (13, 'Odoo System invoice')):
             sheet.merge_range(3, col, 4, col, value, header)
         sheet.write(4, 6, 'up to ' + label, subheader)
         sheet.write(4, 7, 'Times', subheader)
-        sheet.write(4, 8, label, subheader)
         rows = self._rows()
         for number, row in enumerate(rows, 5):
             for col, value in enumerate(row):
@@ -153,7 +184,7 @@ class CreditOperation(models.TransientModel):
     def action_export(self):
         self.ensure_one()
         self.write({'file_data': base64.b64encode(self._xlsx()),
-                    'filename': 'staff_credit_%s.xlsx' % self.month.strftime('%Y_%m')})
+                    'filename': 'staff_credit_%s.xlsx' % (self.month.strftime('%Y_%m') if self.month else 'all_months')})
         return {'type': 'ir.actions.act_url', 'url': '/web/content/%s/%s/file_data/%s?download=true' %
                 (self._name, self.id, self.filename), 'target': 'self'}
 

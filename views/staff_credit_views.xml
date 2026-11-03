@@ -21,8 +21,8 @@
         <field name="arch" type="xml">
             <form string="Staff Credit Bill">
                 <header>
-                    <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?"/>
-                    <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id}"/>
+                    <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?" invisible="schedule_ids"/>
+                    <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id, 'tha_from_credit_form': True}"/>
                     <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager"/>
                     <button name="action_settings" type="object" string="Settings" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
@@ -47,16 +47,17 @@
                             <p>One installment per month. Move an unused installment to skip a month. Generated drafts reserve the amount; only posted entries count as settlement.</p>
                             <field name="schedule_ids">
                                 <list editable="bottom">
-                                    <field name="locked"/><field name="due_date" readonly="locked"/>
+                                    <field name="due_date" readonly="locked"/>
                                     <field name="amount" readonly="locked" sum="Planned"/>
-                                    <field name="deduction_line_ids" widget="many2many_tags" readonly="1"/>
+                                    <field name="deduction_line_ids" widget="many2many_tags" readonly="1" string="Generated deduction"/>
+                                    <field name="locked" string="Deduction created" readonly="1"/>
                                     <field name="currency_id" column_invisible="True"/>
                                 </list>
                             </field>
                         </page>
                         <page string="Generated deductions">
                             <field name="deduction_line_ids" readonly="1">
-                                <list create="0" delete="0"><field name="move_id"/><field name="date"/>
+                                <list create="0" delete="0" open_form_view="1"><field name="move_id"/><field name="date"/>
                                     <field name="parent_state"/><field name="debit"/><field name="credit"/>
                                 </list>
                             </field>
@@ -74,7 +75,7 @@
                         </page>
                         <page string="Notes and authorization">
                             <group><field name="authorizer_id"/><field name="authorization_date"/></group>
-                            <field name="remark"/>
+                            <field name="remark" string="Note" placeholder="Add a note for this staff credit report…"/>
                         </page>
                     </notebook>
                 </sheet>
