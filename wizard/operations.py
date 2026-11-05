@@ -128,7 +128,21 @@ class CreditOperation(models.TransientModel):
                 continue
             plan = bill.schedule_ids.sorted(lambda s: (s.due_date, s.id))
             current = plan.filtered(lambda s: start <= s.due_date <= end)
-            times = '%s/%s' % (list(plan).index(current) + 1, len(plan)) if current else ''
+            amounts = plan.mapped('amount')
+            if not amounts:
+                installment = bill.currency_id.round(bill.amount / bill.installment_count)
+                amounts = [installment] * (bill.installment_count - 1)
+                amounts.append(bill.amount - sum(amounts))
+            # Manual settlements have no installment link: cover the oldest amounts first.
+            completed, covered = 0, 0
+            for amount in amounts:
+                if bill.currency_id.compare_amounts(settled, 0) <= 0:
+                    break
+                covered += amount
+                if bill.currency_id.compare_amounts(settled, covered) < 0:
+                    break
+                completed += 1
+            times = '%s/%s' % (completed, len(amounts))
             rows.append([len(rows) + 1, bill.charge_date, bill.employee_id.name, bill.department_id.name,
                          bill.description, bill.amount, settled, times, sum(current.mapped('amount')), balance,
                          bill.remark or '', bill.name, bill.anzer_reference or '', bill.source_move_id.name])
@@ -151,7 +165,7 @@ class CreditOperation(models.TransientModel):
         label = self.month.strftime("%b'%y") if self.month else 'All months'
         cutoff = fields.Date.end_of(self.month, 'month') if self.month else fields.Date.context_today(self)
         sheet.merge_range(0, 0, 0, 13, '%s | Staff Credit Report | %s' % (self.company_id.name, label), title)
-        sheet.merge_range(1, 0, 1, 13, 'Currency: %s  |  Posted settlements through %s  |  Monthly amount and Times are planned installments.' % (self.company_id.currency_id.name, cutoff.strftime('%d %b %Y')), text)
+        sheet.merge_range(1, 0, 1, 13, 'Currency: %s  |  Posted settlements through %s  |  Times: completed / total repayments. Monthly amount is planned.' % (self.company_id.currency_id.name, cutoff.strftime('%d %b %Y')), text)
         scope = 'Selected bills (%s)' % len(self.bill_ids) if self.bill_ids else 'Company records'
         filters = [scope, 'Status: %s' % dict(self._fields['status'].selection)[self.status]]
         for caption, value in [('Employee', self.employee_id.name), ('Department', self.department_id.name),

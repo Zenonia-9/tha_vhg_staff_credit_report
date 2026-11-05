@@ -1,6 +1,6 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Version 19.0.2.0.13. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
+Version 19.0.2.0.14. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
 
 ## Setup and bills
 
@@ -22,9 +22,9 @@ Use **Existing settlements** for historical repayments or adjustments, allocatin
 
 ## Excel report
 
-**Export Excel** accepts company, month, staff, department, category and month-end open/settled filters. Selected list rows restrict export to those bills; without a selection it covers matching company records. From a bill form, only that bill is included and employee, department and category are prefilled. The 14 columns follow the supplied two-row header design, with grouped settlement/month labels, alternating row shading, highlighted balances, wrapped notes and a green total row. Blank Month means all charge months with settlements through today; planned amount and Times refer to the current month.
+**Export Excel** accepts company, month, staff, department, category and month-end open/settled filters. Selected list rows restrict export to those bills; without a selection it covers matching company records. From a bill form, only that bill is included and employee, department and category are prefilled. The 14 columns follow the supplied two-row header design, with grouped settlement/month labels, alternating row shading, highlighted balances, wrapped notes and a green total row. Blank Month means all charge months with settlements and completed repayments through today; planned amount refers to the current month.
 
-Settlement includes posted amounts through month-end, including dated generated reversals. Balance equals bill less that settlement. Month amount is planned even while the entry is draft; Times is the scheduled installment ordinal (1/3 in the first scheduled month), blank in a skipped month. System Reference is the SC record reference; Odoo System invoice is the original document number. The workbook contains one table with blue headings, totals, filters and frozen headings. It does not contain the template's workflow notes.
+Settlement includes posted amounts through month-end, including dated generated reversals. Balance equals bill less that settlement. Month amount is planned even while the entry is draft. Times shows completed / total repayments, such as 3/5, using cumulative posted settlement to cover installments oldest first. Partial installments do not count as completed; drafts do not count, and reversals reduce progress from their accounting date. Progress stays visible in skipped months and after the plan ends. Before a plan is generated, the configured equal installment amounts are used. System Reference is the SC record reference; Odoo System invoice is the original document number. The workbook contains one table with blue headings, totals, filters and frozen headings. It does not contain the template's workflow notes.
 
 Historical calculations use accounting dates, not today's residual balance. Editable metadata/plans and manual allocations are not immutable month-close snapshots: retain approved monthly exports. Settings from the list edits company defaults; Settings from a bill opens an override wizard. The override applies to that bill's deductions and changes company defaults only when **Save as company default** is checked.
 

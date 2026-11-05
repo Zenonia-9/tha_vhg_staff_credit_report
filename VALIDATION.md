@@ -1,5 +1,15 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-05 — Completed / total repayment progress (19.0.2.0.14)
+
+- Changed Times from the scheduled installment ordinal in the reporting month to completed / total repayments at the settlement cutoff. Cumulative posted settlements cover actual installment amounts oldest first; partial installments and drafts do not count, and dated reversals reduce progress. Without a generated plan, equal installments from the configured count are used. Unpaid bills show 0/total, and progress remains visible in skipped months, after the plan ends and for all-months exports.
+- Updated workbook legend, export dialog help, README, USER_GUIDE and the root CUSTOM_MODULES catalog to match the new meaning.
+- Python AST, XML parsing, manifest data-file checks and git diff whitespace checks passed.
+- Upgraded local THA with --http-port=8079 --gevent-port=8082 --test-enable --test-tags /tha_vhg_staff_credit_report --stop-after-init. Final result: **27 tests, 0 failures, 0 errors** (29 phases including setup). New tests verify 3/5, manual partial installments, unequal amounts, rounding boundaries, historical cutoffs and all-months reporting; existing draft/reversal and skipped-month tests were updated to the requested semantics.
+- Restarted odoo_19 and inspected the last 300 lines of logs/server.log. Registry and HTTP startup succeeded. The authenticated export action and file download returned HTTP 200.
+- Downloaded a fresh all-months Shop Sphere workbook and inspected its actual worksheet/shared-string XML: SC/4/000001=2/2, SC/4/000003=1/1, SC/4/000004=0/3, SC/4/000002=1/6. Amounts and accounting records were unchanged. Saved under ignored artifacts/export_review/staff_credit_all_months_progress.xlsx.
+- Imported and rendered the corrected workbook with the bundled Artifact Tool and visually reviewed the complete report. Times values and the revised explanatory legend are visible. Browser UI clicks were not repeated for this calculation-only follow-up.
+
 ## 2026-11-05 — Direct deduction entry navigation (19.0.2.0.13)
 
 - Updated Generated deductions: Journal Entry explicitly uses the native many2one link widget, row opening is disabled, and an explicit Details button opens the selected account.move.line in a readonly-initialized popup. The action checks the current user's read access and does not use sudo.

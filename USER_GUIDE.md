@@ -96,8 +96,8 @@ In the workbook:
 
 - **100% Bill** is the original linked charge.
 - **Posted through [date]** is cumulative posted settlement, including dated reversals.
-- **Times** is the scheduled installment number for the reporting month, such as `2/6`; it is not a count of paid installments. It is blank when no installment is planned that month.
-- **Planned amount** is the installment scheduled for that month, whether draft, posted or not generated. For an all-months export, this column and Times refer to the current month, as labelled.
+- **Times** shows completed / total repayments through the report cutoff. For example, three fully covered installments out of five show `3/5`; unpaid bills show `0/5` and fully repaid bills show `5/5`. Posted settlement amounts cover the oldest installments first, including historical/manual settlements. A partial installment does not count until fully covered. Drafts do not count, and posted reversals reduce progress from their accounting date. Progress remains visible even when no installment is scheduled in the reporting month. Before a plan is generated, equal installments from the configured count are used.
+- **Planned amount** is the installment scheduled for that month, whether draft, posted or not generated. For an all-months export, this column refers to the current month, as labelled.
 - **Balance as at [date]** is the original charge less posted settlements through that date. Positive balances are highlighted amber; zero balances are green.
 - **System Reference** is the Staff Credit reference. **Anzer System invoice** is the external reference. **Odoo System invoice** is the original Odoo source document number.
 

@@ -108,15 +108,16 @@ class TestStaffCredit(TransactionCase):
         bill = self._bill()
         move = self._generate()
         september = self._operation()._rows()[0]
-        self.assertEqual((september[6], september[7], september[8], september[9]), (0, '1/3', 100, 300))
+        self.assertEqual((september[6], september[7], september[8], september[9]), (0, '0/3', 100, 300))
         move.action_post()
         october = self._operation('2026-10-01')._rows()[0]
-        self.assertEqual((october[6], october[7], october[8], october[9]), (100, '2/3', 100, 200))
+        self.assertEqual((october[6], october[7], october[8], october[9]), (100, '1/3', 100, 200))
         reverse = move._reverse_moves([{'date': '2026-11-30'}])
         reverse.action_post()
         self.assertEqual(bill._settled_at(), 0)
         self.assertEqual(self._operation('2026-10-01')._rows()[0], october)
         self.assertEqual(self._operation('2026-11-01')._rows()[0][9], 300)
+        self.assertEqual(self._operation('2026-11-01')._rows()[0][7], '0/3')
         with self.assertRaises(ValidationError), self.env.cr.savepoint():
             duplicate = move._reverse_moves([{'date': '2026-12-31'}])
             duplicate.action_post()
@@ -132,6 +133,31 @@ class TestStaffCredit(TransactionCase):
         with self.assertRaises(ValidationError), self.env.cr.savepoint():
             second.allocation_ids.amount = 51
         self.assertEqual(first._settled_at(), 50)
+
+    def test_times_completed_total_and_manual_partial_installments(self):
+        bill = self._bill(500, count=5)
+        self._allocate(bill, 250, day='2026-09-30')
+        self._allocate(bill, 50, day='2026-10-31')
+        self.assertEqual(self._operation('2026-09-01')._rows()[0][7], '2/5')
+        self.assertEqual(self._operation('2026-10-01')._rows()[0][7], '3/5')
+        self.assertEqual(self._operation('2027-03-01')._rows()[0][7:9], ['3/5', 0])
+        self.assertEqual(self._operation(month=False)._rows()[0][7], '3/5')
+        self._allocate(bill, 200, day='2026-11-30')
+        self.assertEqual(self._operation('2026-11-01')._rows()[0][7], '5/5')
+        self.assertEqual(self._operation('2026-10-01')._rows()[0][7], '3/5')
+
+    def test_times_uses_actual_unequal_plan_and_rounding(self):
+        bill = self._bill(100)
+        plan = bill.schedule_ids.sorted('due_date')
+        plan[0].amount = 20
+        plan[1].amount = 30
+        plan[2].amount = 50
+        self._allocate(bill, 49.99, day='2026-09-30')
+        self.assertEqual(self._operation()._rows()[0][7], '1/3')
+        self._allocate(bill, 0.01, day='2026-10-31')
+        self.assertEqual(self._operation('2026-10-01')._rows()[0][7], '2/3')
+        self._allocate(bill, 50, day='2026-11-30')
+        self.assertEqual(self._operation('2026-11-01')._rows()[0][7], '3/3')
 
     def test_capacity_with_reserved_drafts_and_late_settlement(self):
         bill = self._bill(300, count=1)
@@ -155,8 +181,8 @@ class TestStaffCredit(TransactionCase):
         bill = self._bill(100)
         self.assertEqual(bill.schedule_ids.mapped('amount'), [33.33, 33.33, 33.34])
         bill.schedule_ids.sorted('due_date')[1].due_date = '2026-12-31'
-        self.assertEqual(self._operation('2026-10-01')._rows()[0][7:9], ['', 0])
-        self.assertEqual(self._operation('2026-12-01')._rows()[0][7], '3/3')
+        self.assertEqual(self._operation('2026-10-01')._rows()[0][7:9], ['0/3', 0])
+        self.assertEqual(self._operation('2026-12-01')._rows()[0][7], '0/3')
         bill.schedule_ids.sorted('due_date')[0].amount = 20
         with self.assertRaises(UserError), self.env.cr.savepoint():
             self._generate()
