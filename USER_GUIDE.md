@@ -68,7 +68,7 @@ Repeat for later months as they become due. Generating again reopens the existin
 
 ## 6. Review partial and completed repayment
 
-The list and bill form show **100% Bill**, **Settled Amount**, and **Balance**. Open **Generated deductions** to review linked accounting entries and their posting states.
+The list and bill form show **100% Bill**, **Settled Amount**, and **Balance**. Open **Generated deductions** to review linked accounting entries and their posting states. Click the **Journal Entry** name (including **Draft Entry**) to open that journal entry directly. Click the row's **Details** button only when you want the Deduction Line popup. Clicking other cells does not open that popup.
 
 - **Partial:** some installments are posted; Balance remains positive.
 - **Not yet settled:** there are no posted settlements, even if a draft deduction exists.

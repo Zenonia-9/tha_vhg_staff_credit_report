@@ -1,5 +1,15 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-05 — Direct deduction entry navigation (19.0.2.0.13)
+
+- Updated Generated deductions: Journal Entry explicitly uses the native many2one link widget, row opening is disabled, and an explicit Details button opens the selected account.move.line in a readonly-initialized popup. The action checks the current user's read access and does not use sudo.
+- Python AST, XML parsing, manifest data-file checks and git diff whitespace checks passed.
+- Upgraded tha_vhg_staff_credit_report in local THA with --stop-after-init --no-http (exit 0), restarted odoo_19, and inspected logs/server.log. Registry startup and HTTP service startup succeeded.
+- Authenticated HTTP smoke checks exercised Details for the existing November draft and October posted deduction of SC/4/000002. Both returned the correct journal item ID, account.move.line form and target=new. No accounting entries were changed.
+- Fetched the installed combined Staff Credit form through get_views and confirmed the direct many2one widget, no_open=1 on the nested list, and explicit Details object button.
+- Browser reload was attempted, but Chrome automation then timed out on CDP navigation/state requests. Visual click-through verification of this follow-up remains unconfirmed. No browser settings or permissions were changed. No automated test suite was run for this small navigation change; the checks above validate source, installed view and server action behavior.
+- Updated USER_GUIDE.md and the root CUSTOM_MODULES.md catalog.
+
 ## 2026-11-05 — Company numbering, examples and Excel export (19.0.2.0.12)
 
 Target: local Docker Odoo 19, database THA. This does not establish production deployment or accounting-team acceptance.

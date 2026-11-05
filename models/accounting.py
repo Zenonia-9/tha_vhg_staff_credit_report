@@ -88,6 +88,14 @@ class AccountMove(models.Model):
 class AccountMoveLine(models.Model):
     _inherit = 'account.move.line'
 
+    def tha_action_open_staff_credit_line(self):
+        self.ensure_one()
+        self.check_access('read')
+        return {'type': 'ir.actions.act_window', 'name': _('Deduction Line'),
+                'res_model': 'account.move.line', 'res_id': self.id,
+                'views': [(False, 'form')], 'target': 'new',
+                'context': {'form_view_initial_mode': 'readonly'}}
+
     # Copy the bill identity to standard reversal lines so historical reporting
     # subtracts the reversal only from its own accounting date onward.
     tha_staff_credit_id = fields.Many2one('tha.staff.credit', copy=True, ondelete='restrict', check_company=True)
