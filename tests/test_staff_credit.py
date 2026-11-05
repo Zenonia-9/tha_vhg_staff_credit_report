@@ -372,6 +372,35 @@ class TestStaffCredit(TransactionCase):
         with self.assertRaises(AccessError):
             self.env['tha.staff.credit'].with_user(self.reader).action_settings()
 
+    def test_list_settings_empty_single_and_multiple_selection(self):
+        model = self.env['tha.staff.credit'].with_user(self.manager)
+        action = model.action_settings()
+        self.assertEqual(action['res_model'], 'tha.staff.credit.config')
+        self.assertEqual(action['res_id'], self.config.id)
+        self.assertEqual(action['context']['default_company_id'], self.company.id)
+        first, second = self._bill(), self._bill()
+        for bills in (first, first | second):
+            action = bills.with_user(self.manager).with_context(
+                tha_staff_credit_company_settings=True).action_settings()
+            self.assertEqual(action['res_model'], 'tha.staff.credit.config')
+            self.assertEqual(action['res_id'], self.config.id)
+        from lxml import etree
+        arch = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_list').arch_db)
+        button = arch.xpath('//header/button[@name="action_settings"]')[0]
+        self.assertIn('tha_staff_credit_company_settings', button.get('context'))
+        with self.assertRaises(AccessError):
+            model.with_user(self.reader).with_context(tha_staff_credit_company_settings=True).action_settings()
+
+    def test_list_settings_first_time_setup_does_not_create_config(self):
+        company = self.env['res.company'].create({'name': 'Unconfigured Staff Credit Company'})
+        self.manager.write({'company_ids': [Command.link(company.id)]})
+        model = self.env['tha.staff.credit'].with_user(self.manager).with_company(company)
+        action = model.action_settings()
+        self.assertEqual(action['res_model'], 'tha.staff.credit.config')
+        self.assertFalse(action['res_id'])
+        self.assertEqual(action['context']['default_company_id'], company.id)
+        self.assertFalse(self.env['tha.staff.credit.config'].search([('company_id', '=', company.id)]))
+
     def test_export_form_defaults_follow_active_bill(self):
         bill = self._bill()
         operation = self.env['tha.staff.credit.operation'].with_user(self.manager).with_context(

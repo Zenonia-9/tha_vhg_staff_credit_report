@@ -1,5 +1,13 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-05 — Settings from empty list / first-time setup (19.0.2.0.17)
+
+- User reported Expected singleton: tha.staff.credit() on live 10.100.10.61:8019. Inspected the existing live Staff Credit browser tab: an empty list with Settings and the error dialog was visible. No live records, settings, code or services were changed.
+- Cause: the always-visible list Settings button called the same singleton-only method as a bill form. Added a company-settings path for an empty/multiple recordset and an explicit list-button context flag so selecting one row also opens company defaults. The bill form retains its bill-specific override wizard. Opening first-time setup returns a new configuration form without creating a record until Save. Manager permission checks remain mandatory.
+- Python AST, XML parsing, manifest data-file checks and git diff whitespace checks passed. Upgraded local THA with --http-port=8079 --gevent-port=8082 --test-enable --test-tags /tha_vhg_staff_credit_report --stop-after-init. Final result: **30 tests, 0 failures, 0 errors** (32 phases including setup). The first run's new-company fixture lacked the Manager role and was correctly rejected; corrected the fixture to use an authorized manager before the successful rerun.
+- Restarted local odoo_19. Authenticated calls to the actual /web/dataset/call_button/tha.staff.credit/action_settings endpoint passed for empty list, single list selection, multiple list selection and bill form. Company paths returned tha.staff.credit.config; the bill form returned tha.staff.credit.settings.wizard. No settings were saved by these checks. Inspected project runtime logs after restart.
+- Updated README, USER_GUIDE and root CUSTOM_MODULES catalog. Live deployment remains pending: install the updated addon code, upgrade tha_vhg_staff_credit_report in the live database and restart its Odoo service.
+
 ## 2026-11-05 — Hide unambiguous source debit selector (19.0.2.0.16)
 
 - Original invoice / entry identifies the accounting document; Staff Credit debit item identifies its particular debit line. Kept both links in the data model, but hide the debit-item selector when exactly one debit matches the company's configured Staff Credit account. Existing onchange logic selects that item automatically. The selector stays visible for multiple or zero matching items, allowing manual selection or correction of the source document.

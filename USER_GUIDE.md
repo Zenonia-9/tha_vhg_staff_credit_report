@@ -5,7 +5,7 @@ Select **Shop Sphere** in the company switcher for the local examples.
 
 ## 1. Set up the company once
 
-A Staff Credit Manager configures **Settings** from the list:
+A Staff Credit Manager configures **Settings** from the list. It opens defaults for the active company even when the list is empty, and row selection does not change its company-settings purpose. On first use it opens a new settings form; saving the completed form creates the configuration:
 
 | Setting | Shop Sphere example |
 | --- | --- |

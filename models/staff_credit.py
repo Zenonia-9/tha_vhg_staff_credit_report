@@ -243,6 +243,14 @@ class StaffCredit(models.Model):
     def action_settings(self):
         if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
             raise AccessError(_('Only Staff Credit managers may configure settings.'))
+        if len(self) != 1 or self.env.context.get('tha_staff_credit_company_settings'):
+            company = self.env.company
+            config = self.env['tha.staff.credit.config'].search([
+                ('company_id', '=', company.id)], limit=1)
+            return {'type': 'ir.actions.act_window', 'name': _('Staff Credit Settings'),
+                    'res_model': 'tha.staff.credit.config', 'res_id': config.id or False,
+                    'views': [(self.env.ref('tha_vhg_staff_credit_report.view_config_form').id, 'form')],
+                    'target': 'new', 'context': {'default_company_id': company.id}}
         self.ensure_one()
         config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
         return {'type': 'ir.actions.act_window', 'name': _('Staff Credit Settings'),

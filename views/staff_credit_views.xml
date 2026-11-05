@@ -7,7 +7,7 @@
                 <header>
                     <button name="%(action_export)d" type="action" string="Export Excel" display="always"/>
                     <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager"/>
-                    <button name="action_settings" type="object" string="Settings" display="always" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <button name="action_settings" type="object" string="Settings" display="always" context="{'tha_staff_credit_company_settings': True}" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
                 <field name="name"/><field name="charge_date"/><field name="employee_id"/><field name="department_id"/>
                 <field name="description"/><field name="source_move_id"/><field name="amount" sum="Bills"/>
