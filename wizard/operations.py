@@ -1,5 +1,7 @@
 import base64
 import io
+import math
+import textwrap
 
 import xlsxwriter
 from dateutil.relativedelta import relativedelta
@@ -69,6 +71,8 @@ class CreditOperation(models.TransientModel):
                             values['employee_id'] = bill.employee_id.id
                         if 'department_id' in names:
                             values['department_id'] = bill.department_id.id
+                        if 'category' in names:
+                            values['category'] = bill.category
         return values
 
     @api.onchange('employee_id')
@@ -100,6 +104,11 @@ class CreditOperation(models.TransientModel):
         if self.employee_id and self.mode == 'export':
             domain.append(('employee_id', '=', self.employee_id.id))
         if self.mode == 'export':
+            if self.bill_ids:
+                self.bill_ids.check_access('read')
+                if self.bill_ids.company_id != self.company_id:
+                    raise UserError(_('Select staff credit bills from one company at a time.'))
+                domain.append(('id', 'in', self.bill_ids.ids))
             if self.department_id:
                 domain.append(('department_id', '=', self.department_id.id))
             if self.category:
@@ -129,52 +138,85 @@ class CreditOperation(models.TransientModel):
         self.ensure_one()
         output = io.BytesIO()
         book = xlsxwriter.Workbook(output, {'in_memory': True, 'strings_to_formulas': False, 'strings_to_urls': False})
-        title = book.add_format({'bold': True, 'bg_color': '#BDD7EE', 'border': 1})
-        header = book.add_format({'bold': True, 'bg_color': '#D9E2F3', 'border': 1, 'text_wrap': True, 'align': 'center', 'valign': 'vcenter'})
+        book.formats[0].set_font_name('Calibri')
+        book.formats[0].set_font_size(11)
+        title = book.add_format({'bold': True, 'font_size': 18, 'font_color': '#FFFFFF',
+                                 'bg_color': '#17365D', 'valign': 'vcenter'})
+        header = book.add_format({'bold': True, 'font_color': '#FFFFFF', 'bg_color': '#24476B', 'border': 1, 'border_color': '#D7E1EB', 'text_wrap': True, 'align': 'center', 'valign': 'vcenter'})
         subheader = book.add_format({'bold': True, 'bg_color': '#D9E2F3', 'border': 1, 'text_wrap': True, 'align': 'center', 'valign': 'vcenter'})
-        text = book.add_format({'border': 1, 'text_wrap': True, 'valign': 'top'})
-        money = book.add_format({'border': 1, 'num_format': '#,##0.00;[Red](#,##0.00);-'})
-        date = book.add_format({'border': 1, 'num_format': 'dd-mmm-yyyy'})
+        text = book.add_format({'font_color': '#34465A', 'text_wrap': True, 'valign': 'vcenter'})
         total_label = book.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1})
         total_money = book.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1, 'num_format': '#,##0.00;[Red](#,##0.00);-'})
         sheet = book.add_worksheet('Staff Credit Report')
         label = self.month.strftime("%b'%y") if self.month else 'All months'
-        sheet.merge_range(0, 0, 0, 13, '%s - Staff Credit Report - %s' % (self.company_id.name, label), header)
-        sheet.merge_range(1, 0, 1, 13, 'Currency: %s | Month amount is planned; settlement and balance include posted entries through month-end.' % self.company_id.currency_id.name, text)
+        cutoff = fields.Date.end_of(self.month, 'month') if self.month else fields.Date.context_today(self)
+        sheet.merge_range(0, 0, 0, 13, '%s | Staff Credit Report | %s' % (self.company_id.name, label), title)
+        sheet.merge_range(1, 0, 1, 13, 'Currency: %s  |  Posted settlements through %s  |  Monthly amount and Times are planned installments.' % (self.company_id.currency_id.name, cutoff.strftime('%d %b %Y')), text)
+        scope = 'Selected bills (%s)' % len(self.bill_ids) if self.bill_ids else 'Company records'
+        filters = [scope, 'Status: %s' % dict(self._fields['status'].selection)[self.status]]
+        for caption, value in [('Employee', self.employee_id.name), ('Department', self.department_id.name),
+                               ('Category', dict(CATEGORIES).get(self.category)),
+                               ('From', self.date_from), ('To', self.date_to)]:
+            if value:
+                filters.append('%s: %s' % (caption, value))
+        sheet.merge_range(2, 0, 2, 13, '  |  '.join(filters), text)
         # Two header rows mirror the supplied workbook: grouped settlement/month columns
         # sit above concise subheadings used for the actual data columns.
         for col, value in enumerate(['No', 'Date', 'Staff name', 'Department', 'Name (Patient & Others)', '100% Bill']):
             sheet.merge_range(3, col, 4, col, value, header)
         sheet.merge_range(3, 6, 3, 8, 'Settlement', header)
-        sheet.write(4, 8, label, subheader)
-        sheet.merge_range(3, 9, 4, 9, 'Balance for ' + label, header)
+        plan_label = self.month.strftime("%b'%y") if self.month else cutoff.strftime("%b'%y")
+        sheet.write(4, 8, plan_label + '\nPlanned amount', subheader)
+        sheet.merge_range(3, 9, 4, 9, 'Balance\nas at ' + cutoff.strftime('%d %b %Y'), header)
         for col, value in ((10, 'Remark'), (11, 'System Reference'), (12, 'Anzer System invoice'), (13, 'Odoo System invoice')):
             sheet.merge_range(3, col, 4, col, value, header)
-        sheet.write(4, 6, 'up to ' + label, subheader)
+        sheet.write(4, 6, 'Posted through\n' + cutoff.strftime('%d %b %Y'), subheader)
         sheet.write(4, 7, 'Times', subheader)
         rows = self._rows()
+        widths = [6, 15, 23, 23, 43, 18, 18, 10, 18, 18, 48, 21, 23, 25]
+        formats = {}
+        for stripe, color in enumerate(('#FFFFFF', '#F2F6FA')):
+            base = {'bg_color': color, 'font_color': '#243746', 'bottom': 1,
+                    'bottom_color': '#D7E1EB', 'text_wrap': True, 'valign': 'top'}
+            for kind, extra in [('text', {}), ('date', {'num_format': 'dd-mmm-yyyy'}),
+                                ('money', {'num_format': '#,##0.00;[Red](#,##0.00);–', 'align': 'right'}),
+                                ('center', {'align': 'center'})]:
+                formats[stripe, kind] = book.add_format(dict(base, **extra))
         for number, row in enumerate(rows, 5):
             for col, value in enumerate(row):
-                sheet.write(number, col, value, money if col in (5, 6, 8, 9) else date if col == 1 else text)
+                kind = 'money' if col in (5, 6, 8, 9) else 'date' if col == 1 else 'center' if col in (0, 7) else 'text'
+                sheet.write(number, col, value, formats[(number - 5) % 2, kind])
+            # Size wrapped narrative rows, including explicit newlines, so notes remain readable.
+            line_count = max(sum(max(1, len(textwrap.wrap(part, max(1, int(widths[col]) - 2))))
+                                 for part in str(row[col] or '').split('\n')) for col in (2, 3, 4, 10, 11, 12, 13))
+            sheet.set_row(number, min(409, max(34, math.ceil(line_count * 15 + 10))))
         total = 5 + len(rows)
         sheet.write(total, 0, 'Total', total_label)
         for col in (1, 2, 3, 4, 7, 10, 11, 12, 13):
             sheet.write_blank(total, col, None, total_label)
         for col in (5, 6, 8, 9):
             sheet.write_number(total, col, sum(row[col] for row in rows), total_money)
-        sheet.set_column(0, 0, 6)
-        sheet.set_column(1, 1, 15)
-        sheet.set_column(2, 3, 24)
-        sheet.set_column(4, 4, 45)
-        sheet.set_column(5, 9, 20)
-        sheet.set_column(7, 7, 10)
-        sheet.set_column(10, 13, 28)
-        sheet.set_row(3, 38)
-        sheet.set_row(4, 30)
+        for col, width in enumerate(widths):
+            sheet.set_column(col, col, width)
+        sheet.set_row(0, 38)
+        sheet.set_row(1, 28)
+        sheet.set_row(2, 25)
+        sheet.set_row(3, 28)
+        sheet.set_row(4, 38)
+        sheet.set_row(total, 28)
+        sheet.hide_gridlines(2)
+        sheet.set_zoom(85)
+        if rows:
+            sheet.conditional_format(5, 9, total - 1, 9, {'type': 'cell', 'criteria': '>', 'value': 0,
+                'format': book.add_format({'font_color': '#9C5700', 'bg_color': '#FFF2CC', 'bold': True})})
+            sheet.conditional_format(5, 9, total - 1, 9, {'type': 'cell', 'criteria': '==', 'value': 0,
+                'format': book.add_format({'font_color': '#276343', 'bg_color': '#E2F0D9'})})
         sheet.freeze_panes(5, 4)
         sheet.autofilter(4, 0, max(4, total - 1), 13)
         sheet.set_landscape()
         sheet.set_paper(8)
+        sheet.set_margins(0.25, 0.25, 0.4, 0.4)
+        sheet.set_footer('&LStaff Credit Report&CPage &P of &N&R' + self.company_id.currency_id.name)
         sheet.fit_to_pages(1, 0)
         sheet.repeat_rows(0, 4)
         sheet.print_area(0, 0, total, 13)
@@ -186,7 +228,7 @@ class CreditOperation(models.TransientModel):
         self.write({'file_data': base64.b64encode(self._xlsx()),
                     'filename': 'staff_credit_%s.xlsx' % (self.month.strftime('%Y_%m') if self.month else 'all_months')})
         return {'type': 'ir.actions.act_url', 'url': '/web/content/%s/%s/file_data/%s?download=true' %
-                (self._name, self.id, self.filename), 'target': 'self'}
+                (self._name, self.id, self.filename), 'target': 'download'}
 
     def action_generate(self):
         self.ensure_one()

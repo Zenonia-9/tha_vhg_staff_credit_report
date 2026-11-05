@@ -158,7 +158,21 @@ class StaffCredit(models.Model):
     def create(self, vals_list):
         records = super().create(vals_list)
         for bill in records:
-            bill.name = 'SC/%s/%06d' % (bill.company_id.id, bill.id)
+            # The company settings lock also serializes first-time sequence creation.
+            bill._config()._serialize()
+            sequences = self.env['ir.sequence'].sudo().with_company(bill.company_id)
+            sequence = sequences.search([('code', '=', 'tha.staff.credit'),
+                                         ('company_id', '=', bill.company_id.id)], limit=1)
+            if not sequence:
+                prefix = 'SC/%s/' % bill.company_id.id
+                existing = self.sudo().search([('company_id', '=', bill.company_id.id),
+                                               ('name', '=like', prefix + '%')]).mapped('name')
+                last = max((int(name[len(prefix):]) for name in existing
+                            if name[len(prefix):].isdigit()), default=0)
+                sequence = sequences.create({'name': 'Staff Credit - %s' % bill.company_id.name,
+                    'code': 'tha.staff.credit', 'company_id': bill.company_id.id,
+                    'prefix': prefix, 'padding': 6, 'number_next': last + 1})
+            bill.name = sequence.next_by_id()
         return records
 
     @api.constrains('source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id',

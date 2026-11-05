@@ -1,5 +1,24 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-05 — Company numbering, examples and Excel export (19.0.2.0.12)
+
+Target: local Docker Odoo 19, database THA. This does not establish production deployment or accounting-team acceptance.
+
+- Python AST, XML parsing, manifest data-file existence and `git diff --check` passed.
+- Upgraded with `docker exec odoo_19 odoo -d THA -u tha_vhg_staff_credit_report --stop-after-init --http-port=8079 --gevent-port=8082 --test-enable --test-tags /tha_vhg_staff_credit_report`.
+- Final result: **25 tests, 0 failures, 0 errors** (27 phases including setup). Coverage includes independent company sequences, initial continuation after legacy references, selected-bill and form export scope, workbook structure and native download action, plus the existing accounting workflow checks.
+- An initial test invocation failed because port 8069 was occupied. The separate port above resolved it. The first suite run found an incorrect merge-count assertion and a pre-existing undefined permission-test helper; both were corrected before the passing final run.
+- Restarted `odoo_19`; project server log showed registry startup and successful Staff Credit list/form, export action and file requests.
+- Shop Sphere's explicitly created local example changed from SC/4/000174 to SC/4/000001, with a chatter note retaining the former reference. Its posted accounting line labels retain their original reference. Other companies' existing names were not changed.
+- Created three more local examples through ORM and existing schedule/deduction methods: SC/4/000002 (60,675 bill, 10,112.50 posted settlement, 50,562.50 outstanding), SC/4/000003 (26,501 fully settled/reconciled), and SC/4/000004 (470,000 outstanding, one generated October draft). No future deductions were posted. All four Shop Sphere bills total 752,676; posted settlements total 232,113.50; balance is 520,562.50 MMK.
+- Authenticated HTTP tests exercised the actual export action and downloaded XLSX files for company-wide list (4 rows), selected bills (2 rows), and a bill form (1 row). All returned HTTP 200 and reconciled to independently checked totals.
+- **Actual Chrome button tests completed:** list Export Excel → October → Export Excel downloaded `staff_credit_2026_10 (1).xlsx`; the partial bill form Export Excel prefilled its employee/department/category and downloaded `(2).xlsx` with only that bill. The user supplied both exact Downloads paths. Read and verified both files; worksheet XML, shared strings and styles exactly match the inspected server-generated copies.
+- Before the fix, exporting with `target=self` replaced the report tab with `ERR_BLOCKED_BY_CLIENT`. No Chrome settings, extensions, permissions or security controls were modified. The updated native `target=download` downloaded both files and preserved the Odoo page. Temporary navigation/control timeouts were recovered through normal Odoo menu navigation.
+- Rendered the complete 14-column report and separately reviewed the amount and reference/remark regions using the bundled Artifact Tool. Verified typed dates/numbers, totals, freeze panes, hidden gridlines, wrapped notes and positive/zero balance highlighting. Files are local review artifacts under ignored `artifacts/export_review/`.
+- Added USER_GUIDE.md with setup, source posting, numbering, plan generation, draft/posting distinction, partial repayment, existing settlements, corrections, reconciliation and list/form export scope.
+
+## Earlier rebuild evidence
+
 Date: 2026-10-30. Target: local Docker Odoo 19, database THA. Version: 19.0.2.0.3.
 
 ## Replacement

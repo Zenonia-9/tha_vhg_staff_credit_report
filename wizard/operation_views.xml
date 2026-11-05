@@ -12,7 +12,7 @@
                 <field name="status" invisible="mode == 'deductions'"/>
             </group>
             <p invisible="mode != 'deductions'">Creates one month-end draft per staff member, using only the selected staff credit bills. Missing selected bills are added to an existing draft; posted batches open only when all selected bills are already included. To change an unused batch, delete its draft and generate it again. Posting is a separate Accounting action.</p>
-            <p invisible="mode != 'export'">Selected employees are shown for reference. Leave Month, Employee, Department, and Category blank to include all matching records. Settlement and balance are calculated through month-end when a month is selected, or through today when Month is blank. The monthly amount and Times show the repayment plan.</p>
+            <p invisible="mode != 'export'">When bills are selected, only those bills are exported. From a bill form, only that bill is exported. For a company-wide report, open Export Excel from the list without selecting rows. Optional filters narrow the result. Settlement and balance are calculated through month-end when a month is selected, or through today when Month is blank. The monthly amount and Times show the repayment plan.</p>
             <footer>
                 <button name="action_export" type="object" string="Export Excel" class="btn-primary" invisible="mode != 'export'"/>
                 <button name="action_generate" type="object" string="Generate / Open Drafts" class="btn-primary" invisible="mode != 'deductions'" groups="tha_vhg_staff_credit_report.group_manager"/>

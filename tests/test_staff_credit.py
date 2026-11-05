@@ -205,16 +205,16 @@ class TestStaffCredit(TransactionCase):
             sheet = ET.fromstring(book.read('xl/worksheets/sheet1.xml'))
             strings = ET.fromstring(book.read('xl/sharedStrings.xml'))
             labels = [''.join(s.itertext()) for s in strings]
-            self.assertIn('Settlement up to Sep\'26', labels)
-            self.assertIn('Balance for Sep\'26', labels)
-            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='4']/m:c", ns)), 13)
+            self.assertIn('Posted through\n30 Sep 2026', labels)
+            self.assertIn('Balance\nas at 30 Sep 2026', labels)
+            self.assertEqual(len(sheet.findall('m:mergeCells/m:mergeCell', ns)), 15)
             self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='6']/m:c", ns)), 14)
-            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='7']/m:c", ns)), 5)
+            self.assertEqual(len(sheet.findall("m:sheetData/m:row[@r='7']/m:c", ns)), 14)
             self.assertFalse(sheet.findall('.//m:f', ns))
             self.assertIsNotNone(sheet.find('m:sheetViews/m:sheetView/m:pane', ns))
-            self.assertIn('FFBDD7EE', book.read('xl/styles.xml').decode())
+            self.assertIn('FF17365D', book.read('xl/styles.xml').decode())
             self.assertIn('FFE2F0D9', book.read('xl/styles.xml').decode())
-        operation.action_export()
+        self.assertEqual(operation.action_export()['target'], 'download')
         self.assertTrue(base64.b64decode(operation.file_data).startswith(b'PK'))
 
     def test_only_one_menu(self):
@@ -317,17 +317,63 @@ class TestStaffCredit(TransactionCase):
         wizard.action_apply()
         self.assertEqual(self.config.journal_id, self.journal)
         with self.assertRaises(AccessError):
-            call_kw(self.env['tha.staff.credit'].with_user(self.reader),
-                    'action_settings', [[]], {})
+            self.env['tha.staff.credit'].with_user(self.reader).action_settings()
 
     def test_export_form_defaults_follow_active_bill(self):
         bill = self._bill()
         operation = self.env['tha.staff.credit.operation'].with_user(self.manager).with_context(
-            default_mode='export', active_model='tha.staff.credit', active_id=bill.id).default_get(
+            default_mode='export', active_model='tha.staff.credit', active_id=bill.id,
+            tha_from_credit_form=True).default_get(
                 ['mode', 'company_id', 'employee_id', 'department_id', 'category'])
         self.assertEqual(operation['employee_id'], bill.employee_id.id)
         self.assertEqual(operation['department_id'], bill.department_id.id)
         self.assertEqual(operation['category'], bill.category)
+
+    def test_export_selected_bills_and_company_wide(self):
+        first, second = self._bill(300), self._bill(600)
+        selected = self._operation(mode='export', bill_ids=[Command.set(first.ids)])
+        self.assertEqual(selected._bills(), first)
+        all_bills = self._operation(mode='export', bill_ids=[Command.clear()])
+        self.assertEqual(set(all_bills._bills().ids), set((first | second).ids))
+        form = self.env['tha.staff.credit.operation'].with_context(default_mode='export',
+            active_model='tha.staff.credit', active_id=second.id, tha_from_credit_form=True).create({})
+        self.assertEqual(form._bills(), second)
+
+    def test_company_numbering_and_legacy_seed(self):
+        first, second = self._bill(), self._bill()
+        prefix = 'SC/%s/' % self.company.id
+        self.assertEqual(first.name, prefix + '000001')
+        self.assertEqual(second.name, prefix + '000002')
+        other = self.env['res.company'].create({'name': 'Independent Staff Credit Company',
+                                               'currency_id': self.company.currency_id.id})
+        other_env = self.env(context=dict(self.env.context, allowed_company_ids=other.ids))
+        account = other_env['account.account'].create({'name': 'Receivable', 'code': '130100',
+            'account_type': 'asset_receivable', 'reconcile': True, 'company_ids': [Command.set(other.ids)]})
+        salary = other_env['account.account'].create({'name': 'Salary', 'code': '701010',
+            'account_type': 'expense', 'company_ids': [Command.set(other.ids)]})
+        journal = other_env['account.journal'].create({'name': 'Staff Credit', 'code': 'SCT',
+                                                       'type': 'general', 'company_id': other.id})
+        other_env['tha.staff.credit.config'].create({'company_id': other.id, 'account_id': account.id,
+            'salary_account_id': salary.id, 'journal_id': journal.id})
+        department = other_env['hr.department'].create({'name': 'Finance', 'company_id': other.id})
+        employee = other_env['hr.employee'].create({'name': 'Other Staff', 'company_id': other.id,
+                                                    'department_id': department.id})
+        source = other_env['account.move'].create({'company_id': other.id, 'journal_id': journal.id,
+            'date': '2026-08-31', 'line_ids': [Command.create({'account_id': account.id,
+                'partner_id': employee.work_contact_id.id, 'date_maturity': '2026-08-31', 'debit': 300}),
+                Command.create({'account_id': salary.id, 'credit': 300})]})
+        source.action_post()
+        bill = other_env['tha.staff.credit'].create({'company_id': other.id, 'employee_id': employee.id,
+            'department_id': department.id, 'partner_id': employee.work_contact_id.id,
+            'source_move_id': source.id, 'source_line_id': source.line_ids.filtered(lambda l: l.debit).id,
+            'charge_date': '2026-08-31', 'description': 'Independent numbering', 'amount': 300,
+            'start_month': '2026-09-01', 'installment_count': 3})
+        self.assertEqual(bill.name, 'SC/%s/000001' % other.id)
+        sequence = self.env['ir.sequence'].search([('code', '=', 'tha.staff.credit'),
+                                                  ('company_id', '=', self.company.id)])
+        sequence.unlink()
+        second.name = prefix + '000050'
+        self.assertEqual(self._bill().name, prefix + '000051')
 
     def test_selected_bills_only_and_incremental_staff_draft(self):
         first, second = self._bill(300), self._bill(600)
