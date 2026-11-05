@@ -35,7 +35,7 @@ Enter the actual charge date, description, reference and receivable due date. Po
 
 1. Click **New** in Staff Credit Report.
 2. Confirm the company and choose **Original invoice / entry**.
-3. Choose **Staff Credit debit item**. A single qualifying item is selected automatically. Check the source date, partner and **100% Bill** amount.
+3. If the document has one qualifying **Staff Credit debit item**, it is selected automatically and its selector is hidden. If there are multiple qualifying debit items, choose the correct one in the selector that appears. If none qualify, choose another source document that debits the configured Staff Credit account. Check the source date, partner and **100% Bill** amount.
 4. Select the responsible **Employee** and **Department**. Enter **Category** and **Patient / other description**.
 5. Enter the original **Anzer System invoice** reference when available. Put legacy references and useful context in **Notes and authorization → Note**. The Odoo source document is kept as a separate link.
 6. Set **Repayment from** and **Installment count**. Save.

@@ -192,8 +192,10 @@ class TestStaffCredit(TransactionCase):
         draft = self.env['tha.staff.credit'].new({'company_id': self.company.id, 'source_move_id': source.move_id.id})
         draft._onchange_move()
         self.assertEqual(draft.source_line_id, source)
+        self.assertFalse(draft.source_line_selection_required)
         self.assertEqual(draft.amount, 300)
         bill = self._bill(source=source)
+        self.assertFalse(bill.with_user(self.reader).source_line_selection_required)
         with self.assertRaises(UserError), self.env.cr.savepoint():
             source.move_id.button_draft()
         with self.assertRaises(UserError), self.env.cr.savepoint():
@@ -201,6 +203,31 @@ class TestStaffCredit(TransactionCase):
         with self.assertRaises(ValidationError), self.env.cr.savepoint():
             self._bill(1, self._source(1, credit=True))
         self.assertEqual(bill.source_move_id, source.move_id)
+
+    def test_source_debit_choice_only_for_ambiguous_documents(self):
+        draft = self.env['tha.staff.credit'].new({'company_id': self.company.id})
+        self.assertFalse(draft.source_line_selection_required)
+        move = self.env['account.move'].create({'company_id': self.company.id,
+            'journal_id': self.journal.id, 'date': '2026-08-31', 'line_ids': [
+                Command.create({'account_id': self.account.id, 'partner_id': self.partner.id,
+                    'date_maturity': '2026-08-31', 'debit': 100}),
+                Command.create({'account_id': self.account.id, 'partner_id': self.partner.id,
+                    'date_maturity': '2026-08-31', 'debit': 200}),
+                Command.create({'account_id': self.salary.id, 'credit': 300})]})
+        move.action_post()
+        draft.source_move_id = move
+        draft._onchange_move()
+        self.assertTrue(draft.source_line_selection_required)
+        self.assertFalse(draft.source_line_id)
+        draft.source_line_id = move.line_ids.filtered(lambda line: line.debit == 200)
+        draft._onchange_source()
+        self.assertEqual(draft.amount, 200)
+        self.assertTrue(draft.source_line_selection_required)
+        from lxml import etree
+        arch = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_form').arch_db)
+        field = arch.xpath('//field[@name="source_line_id"]')[0]
+        self.assertEqual(field.get('invisible'), 'not source_line_selection_required')
+        self.assertEqual(field.get('force_save'), '1')
 
     def test_permissions_and_company_scope(self):
         bill = self._bill()

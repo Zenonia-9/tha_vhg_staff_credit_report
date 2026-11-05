@@ -81,6 +81,8 @@ class StaffCredit(models.Model):
     source_line_id = fields.Many2one('account.move.line', required=True, check_company=True, ondelete='restrict',
                                     string='Staff Credit debit item', tracking=True,
                                     domain="[('move_id', '=', source_move_id), ('debit', '>', 0)]")
+    source_line_selection_required = fields.Boolean(
+        compute='_compute_source_line_selection_required', compute_sudo=True)
     charge_date = fields.Date(required=True, tracking=True)
     description = fields.Char(required=True, tracking=True, string='Patient / other description')
     category = fields.Selection(CATEGORIES, default='hospital', required=True)
@@ -126,6 +128,16 @@ class StaffCredit(models.Model):
         if not config:
             raise UserError(_('Open Settings and configure this company first.'))
         return config
+
+    @api.depends('source_move_id', 'source_move_id.line_ids.account_id',
+                 'source_move_id.line_ids.debit', 'company_id')
+    def _compute_source_line_selection_required(self):
+        for bill in self:
+            config = self.env['tha.staff.credit.config'].search([
+                ('company_id', '=', bill.company_id.id)], limit=1)
+            lines = bill.source_move_id.line_ids.filtered(
+                lambda line: line.account_id == config.account_id and line.debit > 0)
+            bill.source_line_selection_required = bool(bill.source_move_id) and len(lines) != 1
 
     @api.onchange('employee_id')
     def _onchange_employee(self):

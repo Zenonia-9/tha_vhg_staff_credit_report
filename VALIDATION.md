@@ -1,5 +1,13 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-05 — Hide unambiguous source debit selector (19.0.2.0.16)
+
+- Original invoice / entry identifies the accounting document; Staff Credit debit item identifies its particular debit line. Kept both links in the data model, but hide the debit-item selector when exactly one debit matches the company's configured Staff Credit account. Existing onchange logic selects that item automatically. The selector stays visible for multiple or zero matching items, allowing manual selection or correction of the source document.
+- Added a nonstored visibility flag, computed with elevated read access so Staff Credit Readers do not need new Accounting permissions merely to evaluate form visibility. No accounting values or additional access rights are exposed by this boolean. The hidden source-line field has force_save=1 to preserve its automatic selection when the form saves.
+- Python AST, XML parsing, manifest data-file checks and git diff whitespace checks passed. Upgraded local THA with --http-port=8079 --gevent-port=8082 --test-enable --test-tags /tha_vhg_staff_credit_report --stop-after-init. **28 tests passed, 0 failures, 0 errors** (30 phases including setup). Coverage includes single-debit automatic selection/hiding, empty source, multiple eligible debits, selected amount, reader access and the installed force-save/invisible attributes.
+- Restarted odoo_19. Authenticated HTTP checks read all four existing Shop Sphere examples: source-line links remain populated and the selector visibility flag is false. Fetched the installed combined form and verified its conditional visibility and force-save attributes. No accounting records were changed. Browser visual inspection was not performed for this follow-up.
+- Inspected project runtime logs and updated README, USER_GUIDE and root CUSTOM_MODULES catalog.
+
 ## 2026-11-05 — Simplified report date header (19.0.2.0.15)
 
 - Report row 2 now contains only currency and Report date (export generation date in the user's timezone). Removed the Times/monthly amount explanation and the phrase Posted settlements through from that row. Settlement and balance column cutoff labels remain separate.

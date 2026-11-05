@@ -1,6 +1,6 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Version 19.0.2.0.15. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
+Version 19.0.2.0.16. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
 
 ## Setup and bills
 
@@ -8,7 +8,7 @@ Assign Staff Credit Reader or Manager. Managers maintaining bills need access to
 
 Select one company, click **Settings**, and choose its reconcilable Staff Credit account (suggested code 130100), salary expense account (suggested 701010), and general deduction journal. No accounts or original bills are created automatically.
 
-Create a bill and select an existing posted invoice or journal entry, then its Staff Credit debit item. A single qualifying debit is selected automatically. Source date, partner and amount default from that item. A combined source debit may be split between bill records without exceeding its amount. Use company currency only. Select the responsible staff member, department at the time of charge, description, category, Anzer reference and optional authorization information. The original invoice/entry remains clickable.
+Create a bill and select an existing posted invoice or journal entry. When it contains exactly one qualifying Staff Credit debit, that item is selected automatically and the debit-item selector is hidden. The selector appears for multiple qualifying debits so the user can choose the correct line, or when none qualify so the missing source is visible. Source date, partner and amount default from the selected item. A combined source debit may be split between bill records without exceeding its amount. Use company currency only. Select the responsible staff member, department at the time of charge, description, category, Anzer reference and optional authorization information. The original invoice/entry remains clickable.
 
 Set Repayment from and installment count, then **Generate Repayment Plan**. Equal installments are rounded in company currency; the last installment absorbs the difference. Edit unused installment amounts/dates to match the agreement or skip months. The plan must equal the original bill and its count must match before generating deductions. Authorization is informational.
 
