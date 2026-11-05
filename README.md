@@ -1,6 +1,6 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Version 19.0.2.0.14. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
+Version 19.0.2.0.15. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
 
 ## Setup and bills
 

@@ -1,5 +1,13 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-05 — Simplified report date header (19.0.2.0.15)
+
+- Report row 2 now contains only currency and Report date (export generation date in the user's timezone). Removed the Times/monthly amount explanation and the phrase Posted settlements through from that row. Settlement and balance column cutoff labels remain separate.
+- Python AST, XML parsing, manifest data-file existence and git diff whitespace checks passed. Upgraded tha_vhg_staff_credit_report in local THA with --stop-after-init --no-http (exit 0), restarted odoo_19 and inspected the last 300 project log lines; registry and HTTP startup succeeded.
+- Authenticated actual export/download checks for both All months and October 2026 returned HTTP 200. Inspected XLSX XML: A2 is Currency: MMK | Report date: 05 Nov 2026 in both reports, independent of the selected month; no Times explanation or Posted settlements through phrase remains in the workbook.
+- Rendered and visually checked only the changed header region using bundled Artifact Tool. No automated suite was run for this wording-only change; report calculations and accounting data were not changed.
+- Updated README, USER_GUIDE and root CUSTOM_MODULES catalog.
+
 ## 2026-11-05 — Completed / total repayment progress (19.0.2.0.14)
 
 - Changed Times from the scheduled installment ordinal in the reporting month to completed / total repayments at the settlement cutoff. Cumulative posted settlements cover actual installment amounts oldest first; partial installments and drafts do not count, and dated reversals reduce progress. Without a generated plan, equal installments from the configured count are used. Unpaid bills show 0/total, and progress remains visible in skipped months, after the plan ends and for all-months exports.

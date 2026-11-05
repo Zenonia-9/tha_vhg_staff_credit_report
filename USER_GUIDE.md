@@ -94,6 +94,7 @@ Choose any date in the desired **Month** to report through that month's end. Lea
 
 In the workbook:
 
+- The header's **Report date** is the date the export is generated. The settlement and balance column headings show their calculation cutoff separately.
 - **100% Bill** is the original linked charge.
 - **Posted through [date]** is cumulative posted settlement, including dated reversals.
 - **Times** shows completed / total repayments through the report cutoff. For example, three fully covered installments out of five show `3/5`; unpaid bills show `0/5` and fully repaid bills show `5/5`. Posted settlement amounts cover the oldest installments first, including historical/manual settlements. A partial installment does not count until fully covered. Drafts do not count, and posted reversals reduce progress from their accounting date. Progress remains visible even when no installment is scheduled in the reporting month. Before a plan is generated, equal installments from the configured count are used.

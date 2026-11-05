@@ -165,7 +165,8 @@ class CreditOperation(models.TransientModel):
         label = self.month.strftime("%b'%y") if self.month else 'All months'
         cutoff = fields.Date.end_of(self.month, 'month') if self.month else fields.Date.context_today(self)
         sheet.merge_range(0, 0, 0, 13, '%s | Staff Credit Report | %s' % (self.company_id.name, label), title)
-        sheet.merge_range(1, 0, 1, 13, 'Currency: %s  |  Posted settlements through %s  |  Times: completed / total repayments. Monthly amount is planned.' % (self.company_id.currency_id.name, cutoff.strftime('%d %b %Y')), text)
+        sheet.merge_range(1, 0, 1, 13, 'Currency: %s  |  Report date: %s' % (
+            self.company_id.currency_id.name, fields.Date.context_today(self).strftime('%d %b %Y')), text)
         scope = 'Selected bills (%s)' % len(self.bill_ids) if self.bill_ids else 'Company records'
         filters = [scope, 'Status: %s' % dict(self._fields['status'].selection)[self.status]]
         for caption, value in [('Employee', self.employee_id.name), ('Department', self.department_id.name),
