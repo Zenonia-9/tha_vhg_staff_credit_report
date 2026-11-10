@@ -10,11 +10,11 @@ A Staff Credit Manager configures **Settings** from the list. It opens defaults 
 | Setting | Shop Sphere example |
 | --- | --- |
 | Staff Credit account | 130100 Receivable - Internal Under HOD (Staff Credit), reconcilable Receivable |
-| Salary expense account | 701010 Salary & wages |
+| Deduction debit account | 701010 Salary & wages (Expense) |
 | Deduction journal | Staff Credit (STCR), Miscellaneous/general journal |
 | Original bill revenue account | 500115 Services Income - Staff Medical Bills |
 
-These accounts follow the supplied workflow template. Confirm the approved account mapping before using it in another company. Settings are separate for each company. **Settings** on a saved bill can override deduction settings; **Save as company default** also changes defaults for future bills.
+The deduction debit account accepts Expense or Cash/Bank type. Choose the account that matches the approved accounting treatment: monthly deductions debit this account and credit Staff Credit. A Cash/Bank account is suitable when your workflow uses it as a clearing account. Confirm the approved account mapping before using it in another company. Settings are separate for each company. **Settings** on a saved bill can override deduction settings; **Save as company default** also changes defaults for future bills.
 
 Staff Credit Readers can review and export. Staff Credit Managers maintain bills. Generating deductions also requires Accounting access; posting requires the normal Accounting permissions. Employees and their work contacts must already exist in the selected company.
 
@@ -60,7 +60,7 @@ The plan button disappears after a plan exists. **Deduction created** means an e
 5. Open each returned draft in Accounting. Review the staff, month-end date, journal and amount.
 6. Post the entry when approved.
 
-The generated entry is **Dr 701010 Salary & wages / Cr 130100 Staff Credit**, with the staff partner on the credit. One draft is generated per employee per month. Multiple selected bills for that employee have separate credit lines in that draft.
+The generated entry debits the configured deduction debit account and credits the Staff Credit account, with the staff partner on the credit. For the Shop Sphere example this is **Dr 701010 Salary & wages / Cr 130100 Staff Credit**. One draft is generated per employee per month. Multiple selected bills for that employee have separate credit lines in that draft.
 
 **Only posted entries reduce the Staff Credit balance.** Drafts reserve the scheduled amount but leave the bill unpaid. Generation does not process payslips, transfer cash, automatically post entries, or reconcile receivables.
 

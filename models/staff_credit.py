@@ -14,7 +14,8 @@ class CreditConfig(models.Model):
 
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
     account_id = fields.Many2one('account.account', required=True, check_company=True, string='Staff Credit account')
-    salary_account_id = fields.Many2one('account.account', required=True, check_company=True, string='Salary expense account')
+    salary_account_id = fields.Many2one('account.account', required=True, check_company=True,
+                                        string='Salary expense / Cash-Bank clearing account')
     journal_id = fields.Many2one('account.journal', required=True, check_company=True,
                                  domain="[('company_id', '=', company_id), ('type', '=', 'general')]")
     revision = fields.Integer(default=0, readonly=True)
@@ -36,11 +37,11 @@ class CreditConfig(models.Model):
             if (config.company_id not in config.account_id.company_ids
                     or config.account_id.account_type != 'asset_receivable' or not config.account_id.reconcile
                     or config.company_id not in config.salary_account_id.company_ids
-                    or config.salary_account_id.account_type not in ('expense', 'expense_direct_cost')
+                    or config.salary_account_id.account_type not in ('expense', 'expense_direct_cost', 'asset_cash')
                     or config.journal_id.company_id != config.company_id or config.journal_id.type != 'general'
                     or not config.account_id.active or not config.salary_account_id.active
                     or (config.journal_id.currency_id and config.journal_id.currency_id != config.company_id.currency_id)):
-                raise ValidationError(_('Select an active reconcilable receivable, salary expense account and general journal in this company.'))
+                raise ValidationError(_('Select an active reconcilable receivable, expense or Cash/Bank deduction account, and general journal in this company.'))
             if self.env['tha.staff.credit'].search_count([
                     ('company_id', '=', config.company_id.id), ('source_line_id.account_id', '!=', config.account_id.id)]):
                 raise ValidationError(_('Existing bill links use another Staff Credit account.'))

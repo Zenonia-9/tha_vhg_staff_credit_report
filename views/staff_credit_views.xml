@@ -103,7 +103,7 @@
             <form string="Staff Credit Settings">
             <group><field name="company_id"/>
                 <field name="account_id" domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable'), ('reconcile', '=', True)]"/>
-                <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost'])]"/>
+                <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost', 'asset_cash'])]"/>
                 <field name="journal_id"/>
             </group>
         </form></field>
@@ -114,7 +114,7 @@
             <form string="Staff Credit Settings">
                 <group><field name="company_id"/><field name="credit_id" invisible="1"/>
                     <field name="account_id" domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable'), ('reconcile', '=', True)]"/>
-                    <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost'])]"/>
+                    <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost', 'asset_cash'])]"/>
                     <field name="journal_id" domain="[('company_id', '=', company_id), ('type', '=', 'general')]"/>
                     <field name="save_as_default"/>
                 </group>

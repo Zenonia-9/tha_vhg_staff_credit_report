@@ -31,7 +31,8 @@ class CreditOperation(models.TransientModel):
     status = fields.Selection([('all', 'All'), ('open', 'Open at month end'), ('settled', 'Settled at month end')],
                               default='all', required=True)
     account_id = fields.Many2one('account.account', string='Staff Credit account', check_company=True)
-    salary_account_id = fields.Many2one('account.account', string='Salary expense account', check_company=True)
+    salary_account_id = fields.Many2one('account.account',
+        string='Salary expense / Cash-Bank clearing account', check_company=True)
     journal_id = fields.Many2one('account.journal', string='Deduction journal', check_company=True)
     file_data = fields.Binary(attachment=False, readonly=True)
     filename = fields.Char(readonly=True)
@@ -332,7 +333,8 @@ class CreditSettingsWizard(models.TransientModel):
     company_id = fields.Many2one('res.company', required=True, readonly=True)
     credit_id = fields.Many2one('tha.staff.credit', required=True, readonly=True, check_company=True)
     account_id = fields.Many2one('account.account', required=True, check_company=True, string='Staff Credit account')
-    salary_account_id = fields.Many2one('account.account', required=True, check_company=True, string='Salary expense account')
+    salary_account_id = fields.Many2one('account.account', required=True, check_company=True,
+                                        string='Salary expense / Cash-Bank clearing account')
     journal_id = fields.Many2one('account.journal', required=True, check_company=True, string='Deduction journal')
     save_as_default = fields.Boolean(string='Save as company default', default=False)
 
