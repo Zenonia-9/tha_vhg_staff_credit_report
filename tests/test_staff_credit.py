@@ -602,7 +602,7 @@ class TestStaffCredit(TransactionCase):
         status_field = form_arch.xpath('//header/field[@name="stage"]')[0]
         self.assertEqual(status_field.get('widget'), 'statusbar')
         self.assertEqual(status_field.get('statusbar_visible'), 'draft,posted,repaid,cancel')
-        self.assertTrue(form_arch.xpath('//header/button[@name="action_post_staff_credit"]'))
+        self.assertEqual(len(form_arch.xpath('//header/button[@name="action_post_staff_credit"]')), 1)
         self.assertTrue(form_arch.xpath('//field[@name="invoice_state"]'))
         for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
                              ('tha.staff.credit.config', ['form']),
