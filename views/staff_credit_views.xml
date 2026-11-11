@@ -25,7 +25,8 @@
                 <header>
                     <button name="action_create_original_invoice" type="object" string="Create Draft Invoice" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager,account.group_account_user" invisible="state != 'draft' or invoice_id"/>
                     <button name="action_post_staff_credit" type="object" string="Post Staff Credit" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" invisible="state != 'draft' or not invoice_id or invoice_state != 'posted'" confirm="Post this Staff Credit entry using the linked posted customer invoice?"/>
-                    <button name="action_reset_to_draft" type="object" string="Reset to Draft" groups="tha_vhg_staff_credit_report.group_manager,account.group_account_user" invisible="state != 'cancel' or not invoice_id"/>
+                    <button name="action_cancel_staff_credit" type="object" string="Cancel" groups="tha_vhg_staff_credit_report.group_manager" invisible="state == 'cancel' or allocation_ids or deduction_line_ids" confirm="Cancel this Staff Credit entry? Any unused repayment plan will be deleted."/>
+                    <button name="action_reset_to_draft" type="object" string="Reset to Draft" groups="tha_vhg_staff_credit_report.group_manager" invisible="state != 'cancel'"/>
                     <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?" invisible="state != 'posted' or schedule_ids"/>
                     <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id, 'tha_from_credit_form': True}" invisible="state != 'posted'"/>
                     <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager" invisible="state != 'posted'"/>
@@ -40,9 +41,9 @@
                                 options="{'no_create': True, 'no_create_edit': True}"
                                 readonly="state != 'draft'"/>
                             <field name="invoice_state" invisible="1"/>
-                            <field name="source_move_id" options="{'no_create': True}" invisible="state != 'posted'"/>
+                            <field name="source_move_id" options="{'no_create': True}" invisible="state != 'posted'" readonly="state == 'posted'"/>
                             <field name="source_line_selection_required" invisible="1"/>
-                            <field name="source_line_id" options="{'no_create': True}" invisible="not source_line_selection_required" force_save="1"/>
+                            <field name="source_line_id" options="{'no_create': True}" invisible="not source_line_selection_required" readonly="state == 'posted'" force_save="1"/>
                             <field name="charge_date"/><field name="partner_id"/><field name="amount"/>
                             <field name="anzer_reference"/><field name="currency_id" invisible="1"/>
                         </group>

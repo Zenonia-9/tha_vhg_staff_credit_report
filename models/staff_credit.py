@@ -239,30 +239,30 @@ class StaffCredit(models.Model):
             config = bill._config()
             config._serialize()
             if bill.state != 'posted':
-                if bill.source_move_id or bill.source_line_id:
-                    raise ValidationError(_('A draft or cancelled bill cannot already have a posted source link.'))
+                if bool(bill.source_move_id) != bool(bill.source_line_id):
+                    raise ValidationError(_('A bill must retain both source links or neither.'))
                 if (bill.invoice_id and (bill.invoice_id.company_id != bill.company_id
                         or bill.invoice_id.move_type != 'out_invoice'
                         or bill.invoice_id.tha_staff_credit_id != bill
                         or (bill.invoice_id.state not in ('draft', 'posted') if bill.state == 'draft'
-                            else bill.invoice_id.state != 'cancel'))):
+                            else bill.invoice_id.state not in ('draft', 'posted', 'cancel')))):
                     raise ValidationError(_('The linked invoice must be this bill’s company customer invoice in Draft, Posted, or Cancelled state.'))
-                if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
-                        or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)
-                        or bill.employee_id.company_id != bill.company_id
+            if bill.source_move_id:
+                line = bill.source_line_id
+                if (line.move_id != bill.source_move_id or line.parent_state != 'posted' or line.debit <= 0
+                        or line.account_id != config.account_id or line.company_id != bill.company_id
+                        or line.currency_id != bill.currency_id or line.partner_id != bill.partner_id
+                        or bill.charge_date != line.date or bill.employee_id.company_id != bill.company_id
                         or (bill.department_id.company_id and bill.department_id.company_id != bill.company_id)):
-                    raise ValidationError(_('Use a positive bill, 1-600 installments, and a repayment start no earlier than the bill month. Staff and department must belong to the company.'))
+                    raise ValidationError(_('Link a posted company-currency Staff Credit debit matching company, partner and date. Staff and department must belong to the company.'))
+            if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
+                    or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)
+                    or bill.employee_id.company_id != bill.company_id
+                    or (bill.department_id.company_id and bill.department_id.company_id != bill.company_id)):
+                raise ValidationError(_('Use a positive bill, 1-600 installments, and a repayment start no earlier than the bill month.'))
+            if bill.state != 'posted':
                 continue
             line = bill.source_line_id
-            if (line.move_id != bill.source_move_id or line.parent_state != 'posted' or line.debit <= 0
-                    or line.account_id != config.account_id or line.company_id != bill.company_id
-                    or line.currency_id != bill.currency_id or line.partner_id != bill.partner_id
-                    or bill.charge_date != line.date or bill.employee_id.company_id != bill.company_id
-                    or (bill.department_id.company_id and bill.department_id.company_id != bill.company_id)):
-                raise ValidationError(_('Link a posted company-currency Staff Credit debit matching company, partner and date. Staff and department must belong to the company.'))
-            if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
-                    or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)):
-                raise ValidationError(_('Use a positive bill, 1-600 installments, and a repayment start no earlier than the bill month.'))
             total = sum(self.search([('source_line_id', '=', line.id)]).mapped('amount'))
             if bill.currency_id.compare_amounts(total, line.debit) > 0:
                 raise ValidationError(_('Bill links exceed the original debit amount.'))
@@ -276,6 +276,8 @@ class StaffCredit(models.Model):
 
     def write(self, values):
         identity = {'source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id', 'employee_id', 'charge_date'}
+        if {'source_move_id', 'source_line_id'} & values.keys() and any(b.state == 'posted' for b in self):
+            raise UserError(_('The original accounting source cannot be changed after the Staff Credit entry is posted.'))
         if identity & values.keys() and any(b.schedule_ids or b.allocation_ids or b.deduction_line_ids for b in self):
             raise UserError(_('Remove unused schedules and settlement links before changing the bill identity or amount.'))
         if ('invoice_id' in values and not self.env.context.get('tha_staff_credit_invoice_sync')
@@ -312,11 +314,27 @@ class StaffCredit(models.Model):
 
     def action_reset_to_draft(self):
         self.ensure_one()
-        if self.state != 'cancel' or not self.invoice_id or self.invoice_id.state != 'cancel':
-            raise UserError(_('Reset to Draft is available when the linked invoice is cancelled.'))
-        self.invoice_id.button_draft()
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may reset Staff Credit entries.'))
+        if self.state != 'cancel':
+            raise UserError(_('Only a cancelled Staff Credit entry can be reset to Draft.'))
+        if self.invoice_id.state == 'cancel':
+            self.invoice_id.button_draft()
+        self.write({'state': 'draft'})
         return {'type': 'ir.actions.act_window', 'res_model': self._name, 'res_id': self.id,
                 'view_mode': 'form', 'target': 'current'}
+
+    def action_cancel_staff_credit(self):
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may cancel Staff Credit entries.'))
+        for bill in self:
+            if bill.state not in ('draft', 'posted'):
+                raise UserError(_('Only Draft or Posted Staff Credit entries can be cancelled.'))
+            if bill.allocation_ids or bill.deduction_line_ids or not bill.currency_id.is_zero(bill._settled_at()):
+                raise UserError(_('This Staff Credit entry already has repayment or deduction activity and cannot be cancelled.'))
+            bill.schedule_ids.unlink()
+            bill.write({'state': 'cancel'})
+        return True
 
     def action_generate_schedule(self):
         self.ensure_one()

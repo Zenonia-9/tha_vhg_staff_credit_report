@@ -50,9 +50,6 @@ class AccountMove(models.Model):
         if values.get('state') == 'cancel':
             pending = self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.tha_staff_credit_id.state == 'draft')
             pending.mapped('tha_staff_credit_id').sudo().write({'state': 'cancel'})
-        elif values.get('state') == 'draft':
-            cancelled = self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.tha_staff_credit_id.state == 'cancel')
-            cancelled.mapped('tha_staff_credit_id').sudo().write({'state': 'draft'})
         return result
 
     def _reverse_moves(self, default_values_list=None, cancel=False):

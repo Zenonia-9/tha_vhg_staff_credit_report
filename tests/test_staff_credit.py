@@ -161,6 +161,47 @@ class TestStaffCredit(TransactionCase):
         self.assertFalse(bill.exists())
         self.assertFalse(invoice.tha_staff_credit_id)
 
+    def test_cancel_removes_unused_plan_and_reset_to_draft_clears_source(self):
+        bill = self._bill()
+        original_source = bill.source_move_id
+        self.assertTrue(bill.schedule_ids)
+        bill.with_user(self.manager).action_cancel_staff_credit()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'cancel')
+        self.assertFalse(bill.schedule_ids)
+        self.assertEqual(bill.source_move_id, original_source)
+        bill.with_user(self.manager).action_reset_to_draft()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'draft')
+        self.assertEqual(bill.source_move_id, original_source)
+        self.assertTrue(bill.source_line_id)
+
+    def test_posted_invoice_source_stays_linked_across_cancel_and_reset(self):
+        bill = self._pending_bill()
+        invoice = self.env['account.move'].browse(
+            bill.with_user(self.manager).action_create_original_invoice()['res_id'])
+        invoice.action_post()
+        bill.with_user(self.manager).action_post_staff_credit()
+        bill.with_user(self.manager).action_cancel_staff_credit()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'cancel')
+        self.assertEqual(bill.source_move_id, invoice)
+        self.assertEqual(invoice.state, 'posted')
+        bill.with_user(self.manager).action_reset_to_draft()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'draft')
+        self.assertEqual(bill.invoice_id, invoice)
+        self.assertEqual(bill.source_move_id, invoice)
+        self.assertEqual(invoice.state, 'posted')
+
+    def test_cannot_cancel_after_repayment_activity(self):
+        bill = self._bill()
+        self._allocate(bill, 50)
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            bill.with_user(self.manager).action_cancel_staff_credit()
+        self.assertEqual(bill.state, 'posted')
+        self.assertTrue(bill.allocation_ids)
+
     def _operation(self, month='2026-09-01', **values):
         values.setdefault('bill_ids', [Command.set(self.env['tha.staff.credit'].search([
             ('company_id', '=', values.get('company_id', self.company.id))]).ids)])
@@ -314,6 +355,15 @@ class TestStaffCredit(TransactionCase):
         with self.assertRaises(ValidationError), self.env.cr.savepoint():
             self._bill(1, self._source(1, credit=True))
         self.assertEqual(bill.source_move_id, source.move_id)
+
+    def test_posted_staff_credit_source_cannot_be_changed(self):
+        bill = self._bill()
+        other_source = self._source(300, day='2026-08-31')
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            bill.with_user(self.manager).write({
+                'source_move_id': other_source.move_id.id,
+                'source_line_id': other_source.id,
+            })
 
     def test_source_debit_choice_only_for_ambiguous_documents(self):
         draft = self.env['tha.staff.credit'].new({'company_id': self.company.id})
@@ -603,7 +653,9 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(status_field.get('widget'), 'statusbar')
         self.assertEqual(status_field.get('statusbar_visible'), 'draft,posted,repaid,cancel')
         self.assertEqual(len(form_arch.xpath('//header/button[@name="action_post_staff_credit"]')), 1)
+        self.assertEqual(len(form_arch.xpath('//header/button[@name="action_cancel_staff_credit"]')), 1)
         self.assertTrue(form_arch.xpath('//field[@name="invoice_state"]'))
+        self.assertEqual(form_arch.xpath('//field[@name="source_move_id"]')[0].get('readonly'), "state == 'posted'")
         for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
                              ('tha.staff.credit.config', ['form']),
                              ('tha.staff.credit.operation', ['form']),
