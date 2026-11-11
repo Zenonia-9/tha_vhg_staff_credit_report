@@ -34,12 +34,12 @@ class AccountMove(models.Model):
             elif self.env.context.get('tha_staff_credit_invoice_link'):
                 bill = self.env['tha.staff.credit'].sudo().browse(values['tha_staff_credit_id']).exists()
                 if (not bill or len(self) != 1 or self.tha_staff_credit_id
-                        or self.state != 'draft' or self.move_type != 'out_invoice'
+                        or self.state not in ('draft', 'posted') or self.move_type != 'out_invoice'
                         or bill.state != 'draft' or bill.source_move_id
                         or bill.company_id != self.company_id
                         or (bill.invoice_id and bill.invoice_id != self
                             and bill.invoice_id.tha_staff_credit_id == bill)):
-                    raise ValidationError(_('Only an unlinked draft customer invoice for a draft Staff Credit bill can be linked.'))
+                    raise ValidationError(_('Only an unlinked draft or posted customer invoice for a draft Staff Credit bill can be linked.'))
             else:
                 raise UserError(_('Staff Credit accounting links cannot be changed.'))
         result = super().write(values)
@@ -104,32 +104,6 @@ class AccountMove(models.Model):
                         or move.company_id.currency_id.compare_amounts(salary.debit, sum(tagged.mapped('credit')))):
                     raise ValidationError(_('The deduction must debit the configured salary account for the total bill credits.'))
         result = super()._post(soft=soft)
-        for move in self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.state == 'posted'):
-            bill = move.tha_staff_credit_id
-            if bill.state == 'posted':
-                if bill.source_move_id != move:
-                    raise ValidationError(_('This invoice is already linked to another Staff Credit bill.'))
-                continue
-            if bill.state != 'draft' or bill.invoice_id != move or move.move_type != 'out_invoice':
-                raise ValidationError(_('Only the linked draft customer invoice can activate this Staff Credit bill.'))
-            config = self.env['tha.staff.credit.config'].sudo().search([
-                ('company_id', '=', bill.company_id.id)], limit=1)
-            if not config or not config.invoice_credit_account_id:
-                raise ValidationError(_('Configure the original invoice income account before posting this Staff Credit invoice.'))
-            receivable = move.line_ids.filtered(lambda line: line.display_type == 'payment_term'
-                and line.account_id == config.account_id and line.debit > 0)
-            income = move.line_ids.filtered(lambda line: line.display_type == 'product' and line.credit > 0)
-            if (not config or len(receivable) != 1 or move.company_id != bill.company_id
-                    or move.partner_id != bill.partner_id or move.date != bill.charge_date
-                    or move.currency_id != bill.currency_id
-                    or bill.currency_id.compare_amounts(receivable.debit, bill.amount) != 0
-                    or len(income) != 1 or income.account_id != config.invoice_credit_account_id
-                    or bill.currency_id.compare_amounts(income.credit, bill.amount) != 0
-                    or bill.currency_id.compare_amounts(move.amount_total, bill.amount) != 0
-                    or move.amount_tax):
-                raise ValidationError(_('The posted invoice must match the bill amount and use the configured Staff Credit receivable and income accounts without taxes.'))
-            bill.sudo().write({'source_move_id': move.id, 'source_line_id': receivable.id, 'state': 'posted'})
-            bill.sudo().message_post(body=_('Activated from posted original invoice: %s', move.name))
         bills._check_capacity()
         return result
 

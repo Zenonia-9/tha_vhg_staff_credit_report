@@ -89,7 +89,8 @@ class StaffCredit(models.Model):
     department_id = fields.Many2one('hr.department', required=True, check_company=True, tracking=True)
     partner_id = fields.Many2one('res.partner', required=True, check_company=True, tracking=True)
     invoice_id = fields.Many2one('account.move', check_company=True, ondelete='restrict', copy=False,
-                                 string='Customer invoice', domain="[('company_id', '=', company_id), ('move_type', '=', 'out_invoice'), ('state', '=', 'draft'), ('tha_staff_credit_id', 'in', [False, id])]")
+                                 string='Customer invoice', domain="[('company_id', '=', company_id), ('move_type', '=', 'out_invoice'), ('state', 'in', ['draft', 'posted']), ('tha_staff_credit_id', 'in', [False, id])]")
+    invoice_state = fields.Selection(related='invoice_id.state')
     source_move_id = fields.Many2one('account.move', check_company=True, ondelete='restrict',
                                     string='Original invoice / entry', tracking=True,
                                     domain="[('company_id', '=', company_id), ('state', '=', 'posted')]")
@@ -243,8 +244,9 @@ class StaffCredit(models.Model):
                 if (bill.invoice_id and (bill.invoice_id.company_id != bill.company_id
                         or bill.invoice_id.move_type != 'out_invoice'
                         or bill.invoice_id.tha_staff_credit_id != bill
-                        or bill.invoice_id.state != ('draft' if bill.state == 'draft' else 'cancel'))):
-                    raise ValidationError(_('The linked invoice must be this bill’s company customer invoice in Draft or Cancelled state.'))
+                        or (bill.invoice_id.state not in ('draft', 'posted') if bill.state == 'draft'
+                            else bill.invoice_id.state != 'cancel'))):
+                    raise ValidationError(_('The linked invoice must be this bill’s company customer invoice in Draft, Posted, or Cancelled state.'))
                 if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
                         or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)
                         or bill.employee_id.company_id != bill.company_id
@@ -285,15 +287,13 @@ class StaffCredit(models.Model):
                 raise UserError(_('A customer invoice link cannot be changed after the Staff Credit bill is posted or cancelled.'))
             new_invoice = self.env['account.move'].browse(values.get('invoice_id')).exists()
             old_invoice = bill.invoice_id
-            if old_invoice and old_invoice.state == 'posted':
-                raise UserError(_('A posted customer invoice cannot be replaced.'))
             if new_invoice:
-                if (new_invoice.state != 'draft' or new_invoice.move_type != 'out_invoice'
+                if (new_invoice.state not in ('draft', 'posted') or new_invoice.move_type != 'out_invoice'
                         or new_invoice.company_id != bill.company_id
                         or new_invoice.tha_staff_credit_id not in (self.env['tha.staff.credit'], bill)
                         or self.env['tha.staff.credit'].search_count([
                             ('invoice_id', '=', new_invoice.id), ('id', '!=', bill.id)])):
-                    raise ValidationError(_('Select an unlinked draft customer invoice for this company and partner.'))
+                    raise ValidationError(_('Select an unlinked draft or posted customer invoice for this company.'))
             if old_invoice and old_invoice != new_invoice and old_invoice.tha_staff_credit_id == bill:
                 old_invoice.sudo().with_context(tha_staff_credit_unlink=True).write({'tha_staff_credit_id': False})
             if new_invoice and new_invoice != old_invoice and new_invoice.tha_staff_credit_id != bill:
@@ -334,6 +334,33 @@ class StaffCredit(models.Model):
             'amount': final if i == self.installment_count - 1 else amount,
         }) for i in range(self.installment_count)]})
         self.message_post(body=_('Generated monthly repayment plan.'))
+
+    def action_post_staff_credit(self):
+        self.ensure_one()
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may post Staff Credit entries.'))
+        if self.state != 'draft' or not self.invoice_id:
+            raise UserError(_('Select a customer invoice before posting this Staff Credit entry.'))
+        move = self.invoice_id
+        if move.state != 'posted':
+            raise UserError(_('Post the linked customer invoice first. The Staff Credit entry is posted separately here.'))
+        config = self._config()
+        receivable = move.line_ids.filtered(lambda line: line.display_type == 'payment_term'
+                                             and line.account_id == config.account_id and line.debit > 0)
+        income = move.line_ids.filtered(lambda line: line.display_type == 'product' and line.credit > 0)
+        if (move.move_type != 'out_invoice' or move.company_id != self.company_id
+                or move.partner_id != self.partner_id or move.date != self.charge_date
+                or move.currency_id != self.currency_id or len(receivable) != 1
+                or receivable.partner_id != self.partner_id or receivable.date != self.charge_date
+                or self.currency_id.compare_amounts(receivable.debit, self.amount)
+                or len(income) != 1 or income.account_id != config.invoice_credit_account_id
+                or self.currency_id.compare_amounts(income.credit, self.amount)
+                or self.currency_id.compare_amounts(move.amount_total, self.amount) or move.amount_tax):
+            raise ValidationError(_('The posted invoice must match this Staff Credit entry and use the configured receivable and income accounts without taxes.'))
+        self.write({'source_move_id': move.id, 'source_line_id': receivable.id, 'state': 'posted'})
+        self.message_post(body=_('Posted separately from linked customer invoice: %s', move.name))
+        return {'type': 'ir.actions.act_window', 'res_model': self._name, 'res_id': self.id,
+                'view_mode': 'form', 'target': 'current'}
 
     def action_create_original_invoice(self):
         self.ensure_one()

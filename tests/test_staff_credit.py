@@ -85,15 +85,17 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(term.account_id, self.account)
         self.assertEqual(term.debit, bill.amount)
         self.assertEqual(invoice.invoice_line_ids.tax_ids, self.env['account.tax'])
-        with self.assertRaises(ValidationError), self.env.cr.savepoint():
-            invoice.invoice_line_ids.account_id = self.salary
-            invoice.action_post()
-        self.assertEqual(invoice.state, 'draft')
+        with self.assertRaises(UserError):
+            bill.with_user(self.manager).action_post_staff_credit()
         export = self.env['tha.staff.credit.operation'].create({'company_id': self.company.id, 'mode': 'export'})
         self.assertNotIn(bill, export._bills())
         with self.assertRaises(UserError):
             self._operation().with_user(self.manager).action_generate()
         invoice.action_post()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'draft', 'Posting the customer invoice must not post Staff Credit.')
+        self.assertFalse(bill.source_move_id)
+        bill.with_user(self.manager).action_post_staff_credit()
         bill.invalidate_recordset()
         self.assertEqual(bill.state, 'posted')
         self.assertEqual(bill.stage, 'posted')
@@ -102,6 +104,17 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(bill.source_line_id.debit, bill.amount)
         self.assertEqual(self.env['tha.staff.credit'].search_count([('invoice_id', '=', invoice.id)]), 1)
         self.assertIn(bill, export._bills())
+
+    def test_staff_credit_post_rejects_wrong_invoice_account(self):
+        bill = self._pending_bill()
+        action = bill.with_user(self.manager).action_create_original_invoice()
+        invoice = self.env['account.move'].browse(action['res_id'])
+        invoice.invoice_line_ids.account_id = self.salary
+        invoice.action_post()
+        self.assertEqual(bill.state, 'draft')
+        with self.assertRaises(ValidationError), self.env.cr.savepoint():
+            bill.with_user(self.manager).action_post_staff_credit()
+        self.assertEqual(bill.state, 'draft')
 
     def test_patient_description_is_optional(self):
         self.assertFalse(self.env['tha.staff.credit']._fields['description'].required)
@@ -491,6 +504,9 @@ class TestStaffCredit(TransactionCase):
 
         second.action_post()
         bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'draft')
+        bill.with_user(self.manager).action_post_staff_credit()
+        bill.invalidate_recordset()
         self.assertEqual(bill.state, 'posted')
         self.assertEqual(bill.source_move_id, second)
         self.assertEqual(bill.source_line_id.account_id, self.account)
@@ -532,6 +548,31 @@ class TestStaffCredit(TransactionCase):
         bill.invoice_id = invoice
         invoice.partner_id = bill.partner_id
         invoice.action_post()
+        self.assertEqual(bill.state, 'draft')
+        bill.with_user(self.manager).action_post_staff_credit()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'posted')
+        self.assertEqual(bill.source_move_id, invoice)
+
+    def test_select_previously_posted_invoice_then_post_staff_credit_separately(self):
+        bill = self._pending_bill()
+        invoice = self.env['account.move'].create({
+            'company_id': self.company.id, 'journal_id': self.sales_journal.id,
+            'move_type': 'out_invoice', 'invoice_date': bill.charge_date,
+            'partner_id': bill.partner_id.id,
+            'invoice_line_ids': [Command.create({
+                'name': 'Previously posted invoice', 'account_id': self.invoice_credit.id,
+                'quantity': 1, 'price_unit': bill.amount,
+                'tax_ids': [Command.clear()],
+            })],
+        })
+        invoice.line_ids.filtered(lambda line: line.display_type == 'payment_term').account_id = self.account
+        invoice.action_post()
+        self.assertEqual(bill.state, 'draft')
+        self.assertFalse(bill.source_move_id)
+        bill.invoice_id = invoice
+        self.assertEqual(bill.state, 'draft')
+        bill.with_user(self.manager).action_post_staff_credit()
         bill.invalidate_recordset()
         self.assertEqual(bill.state, 'posted')
         self.assertEqual(bill.source_move_id, invoice)
@@ -561,6 +602,8 @@ class TestStaffCredit(TransactionCase):
         status_field = form_arch.xpath('//header/field[@name="stage"]')[0]
         self.assertEqual(status_field.get('widget'), 'statusbar')
         self.assertEqual(status_field.get('statusbar_visible'), 'draft,posted,repaid,cancel')
+        self.assertTrue(form_arch.xpath('//header/button[@name="action_post_staff_credit"]'))
+        self.assertTrue(form_arch.xpath('//field[@name="invoice_state"]'))
         for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
                              ('tha.staff.credit.config', ['form']),
                              ('tha.staff.credit.operation', ['form']),
