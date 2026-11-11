@@ -1,5 +1,11 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — Make patient description optional (19.0.2.0.33)
+
+- Patient / other description is optional for manual entries and native imports. If blank, a generated invoice uses the Staff Credit reference as its line label; report exports leave it blank and deductions use the bill reference.
+- Added a regression verifying an empty description can create a linked draft invoice with its fallback line label.
+- Validation passed: Python compileall, XML parsing, manifest parsing, `git diff --check`, THA module upgrade, and the full addon suite (**39 tests, 0 failures, 0 errors**).
+
 ## 2026-11-11 — Show newly imported bills first (19.0.2.0.32)
 
 - Changed the Staff Credit default order to record ID descending. New entries now appear at the top regardless of their historical Charge Date.

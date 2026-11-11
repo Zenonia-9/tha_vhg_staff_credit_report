@@ -145,7 +145,7 @@ class CreditOperation(models.TransientModel):
                 completed += 1
             times = '%s/%s' % (completed, len(amounts))
             rows.append([len(rows) + 1, bill.charge_date, bill.employee_id.name, bill.department_id.name,
-                         bill.description, bill.amount, settled, times, sum(current.mapped('amount')), balance,
+                         bill.description or '', bill.amount, settled, times, sum(current.mapped('amount')), balance,
                          bill.remark or '', bill.name, bill.anzer_reference or '', bill.source_move_id.name])
         return rows
 
@@ -291,7 +291,7 @@ class CreditOperation(models.TransientModel):
             if not batch:
                 batch = batches.create({'company_id': self.company_id.id, 'employee_id': employee.id, 'month': start})
             commands = [Command.create({
-                'name': '%s - %s' % (s.credit_id.name, s.credit_id.description),
+                'name': '%s - %s' % (s.credit_id.name, s.credit_id.description or s.credit_id.name),
                 'account_id': s.credit_id.source_line_id.account_id.id,
                 'partner_id': s.credit_id.partner_id.id, 'credit': s.amount,
                 'date_maturity': fields.Date.end_of(start, 'month'),

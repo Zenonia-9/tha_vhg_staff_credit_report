@@ -99,7 +99,8 @@ class StaffCredit(models.Model):
     source_line_selection_required = fields.Boolean(
         compute='_compute_source_line_selection_required', compute_sudo=True)
     charge_date = fields.Date(required=True, tracking=True)
-    description = fields.Char(required=True, tracking=True, string='Patient / other description')
+    description = fields.Char(tracking=True, string='Patient / other description',
+                              help='Optional. If blank, the generated invoice uses the Staff Credit reference.')
     category = fields.Selection(CATEGORIES, default='hospital', required=True)
     amount = fields.Monetary(required=True, tracking=True, string='100% Bill')
     anzer_reference = fields.Char(tracking=True, string='Anzer System invoice')
@@ -332,7 +333,8 @@ class StaffCredit(models.Model):
             'partner_id': self.partner_id.id, 'invoice_date': self.charge_date,
             'ref': self.name, 'tha_staff_credit_id': self.id,
             'invoice_line_ids': [Command.create({
-                'name': self.description, 'quantity': 1, 'price_unit': self.amount,
+                'name': self.description or _('Staff Credit %s', self.name),
+                'quantity': 1, 'price_unit': self.amount,
                 'account_id': invoice_account.id,
             })],
         })

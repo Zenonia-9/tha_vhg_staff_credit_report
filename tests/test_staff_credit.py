@@ -103,6 +103,15 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(self.env['tha.staff.credit'].search_count([('invoice_id', '=', invoice.id)]), 1)
         self.assertIn(bill, export._bills())
 
+    def test_patient_description_is_optional(self):
+        self.assertFalse(self.env['tha.staff.credit']._fields['description'].required)
+        bill = self._pending_bill()
+        bill.description = False
+        action = bill.with_user(self.manager).action_create_original_invoice()
+        invoice = self.env['account.move'].browse(action['res_id'])
+        self.assertFalse(bill.description)
+        self.assertEqual(invoice.invoice_line_ids.name, 'Staff Credit %s' % bill.name)
+
     def test_cancelled_original_invoice_marks_staff_credit_cancelled(self):
         bill = self._pending_bill()
         invoice = self.env['account.move'].browse(
