@@ -338,16 +338,18 @@ class TestStaffCredit(TransactionCase):
         view = self.env.ref('tha_vhg_staff_credit_report.view_credit_list')
         self.assertIn('import="1"', view.arch_db)
         result = self.env['tha.staff.credit'].load(
-            ['company_id', 'employee_id', 'department_id', 'partner_id', 'charge_date',
+            ['company_id', 'employee_id', 'charge_date',
              'description', 'amount', 'start_month', 'installment_count'],
-            [[self.company.name, self.employee.name, self.department.name, self.partner.name,
-              '2026-04-15', 'Backdated outpatient bill', '1500', '2026-05-01', '2']])
+            [[self.company.name, self.employee.name, '2026-04-15', 'Backdated outpatient bill',
+              '1500', '2026-05-01', '2']])
         self.assertFalse(result['messages'])
         bill = self.env['tha.staff.credit'].search([('description', '=', 'Backdated outpatient bill')])
         self.assertEqual(len(bill), 1)
         self.assertEqual(bill.charge_date, date(2026, 4, 15))
         self.assertEqual(bill.amount, 1500)
         self.assertEqual(bill.state, 'draft')
+        self.assertEqual(bill.department_id, self.department)
+        self.assertEqual(bill.partner_id, self.partner)
         self.assertFalse(bill.invoice_id)
         invoice_action = bill.with_user(self.manager).action_create_original_invoice()
         invoice = self.env['account.move'].browse(invoice_action['res_id'])

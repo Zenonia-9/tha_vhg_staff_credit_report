@@ -1,5 +1,11 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — Derive department and partner on native imports (19.0.2.0.31)
+
+- Native Odoo imports do not execute form onchanges. When Department and Partner are omitted or blank, Staff Credit creation now fills them from the selected Employee's Department and work contact. Explicit non-empty values remain supported.
+- Updated the backdated native-import regression to omit both related columns and verify they are derived.
+- Validation passed: Python compileall, XML parsing, manifest parsing, and `git diff --check`; THA module upgrade and addon suite: **38 tests, 0 failures, 0 errors**.
+
 ## 2026-11-11 — Repaid stage for completed balances (19.0.2.0.30)
 
 - Added a read-only computed State display: Draft, Posted, Repaid, or Cancelled. A posted bill displays Repaid when posted settlements reduce its balance to zero; the underlying accounting-linked state remains Posted so invoice and deduction workflows continue to use the existing lifecycle.

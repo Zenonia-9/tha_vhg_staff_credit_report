@@ -196,6 +196,15 @@ class StaffCredit(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            if vals.get('employee_id'):
+                employee = self.env['hr.employee.public'].browse(vals['employee_id'])
+                # Odoo imports call create() without form onchanges. Keep the
+                # employee's standard department/contact defaults available to
+                # native imports that omit these optional spreadsheet columns.
+                if not vals.get('department_id'):
+                    vals['department_id'] = employee.department_id.id
+                if not vals.get('partner_id'):
+                    vals['partner_id'] = employee.work_contact_id.id
             if not vals.get('state'):
                 vals['state'] = 'posted' if vals.get('source_move_id') else 'draft'
         records = super().create(vals_list)
