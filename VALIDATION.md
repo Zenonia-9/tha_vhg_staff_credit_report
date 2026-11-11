@@ -155,3 +155,9 @@ Updated the addon to 19.0.2.0.26. Added a blank import template download and man
 Validation: Python compileall, XML parsing, `git diff --check`, and THA module upgrade with the complete addon suite passed (**38 tests, 0 failures, 0 errors**). Local report export completed and served `staff_credit_all_months.xlsx` with HTTP 200. Restarted `odoo_19` after upgrade.
 
 Local browser demo: Shop Sphere staff credit `SC/4/000007`, Hsu Thawda Cho, 150,000 MMK, charged 2026-11-11, outpatient consultation and prescribed medicines. Invoice `INV/2026/11/11/0001` posted with Dr 130100 / Cr 510585. Two installments of 75,000 MMK; November deduction `STCR/2026/11/0001` posted, leaving 75,000 MMK settled and 75,000 MMK open. Deleted cancelled test entry `SC/4/000005` through the local Odoo interface. This is local THA demo data, not production.
+
+## Native Odoo list import — 2026-11-11
+
+Per the user's clarification, the custom upload wizard and template button were removed. The Staff Credit list now enables Odoo's native Import action (`import="1"`). Odoo's model importer can create backdated pending records from standard fields; each imported bill can then use the existing **Create Draft Invoice** action and normal Accounting posting. The Excel report exporter remains a separate feature.
+
+Validation on version 19.0.2.0.28: Python compileall, XML parsing, `git diff --check`, module upgrade on THA, and the full addon suite passed (**38 tests, 0 failures, 0 errors**). A regression exercises Odoo's native model `load()` path with a backdated row, verifies the list import setting, then creates a linked invoice draft with the configured accounts. Odoo restarted after upgrade.

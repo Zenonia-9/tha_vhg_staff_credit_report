@@ -1,6 +1,6 @@
 # VHG Staff Credit Report (Odoo 19)
 
-Version 19.0.2.0.26. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
+Version 19.0.2.0.28. Open **Accounting > Reporting > Other Reports > Staff Credit Report** (`/odoo/staff-credit-report`). This is the only module menu. See [USER_GUIDE.md](USER_GUIDE.md) for step-by-step setup, posting, repayment and export instructions.
 
 ## Setup and bills
 
@@ -22,9 +22,11 @@ Repeated generation opens the existing entry without duplicating selected bills.
 
 Use **Existing settlements** for historical repayments or adjustments, allocating existing posted credit items to bills. Generated credits count automatically and cannot be allocated again. Remove manual source links before correcting/reversing those external entries; retain approved exports for audit. Original bill sources are protected while linked.
 
-## Excel report
+## Native Odoo import
 
-Managers can download a blank workbook from **Import Excel** and import historical or backdated entries. Use one row per entry and the wizard headers: Employee, Charge Date, Amount, Category, Description, Repayment From, Installment Count, and optional Anzer Reference. The import creates pending Staff Credit records and linked draft customer invoices using the selected company settings. Review and post invoices through Accounting to activate them. Invalid rows abort the import with the row number. Export continues to produce the repayment report workbook.
+Use Odoo's standard **Import** action on the Staff Credit list for backdated or bulk entries. Map the required company, employee, department, partner, charge date, description, bill amount, repayment start month and installment count fields. Imported bills remain in Draft until their invoice is created and posted. Open each imported bill and click **Create Draft Invoice** to create its customer invoice using the configured Staff Credit debit and Original Invoice credit accounts; post it through Accounting to activate the bill. This is Odoo's normal list import, separate from the repayment **Export Excel** report.
+
+## Excel report
 
 **Export Excel** accepts company, month, staff, department, category and month-end open/settled filters. Selected list rows restrict export to those bills; without a selection it covers matching company records. From a bill form, only that bill is included and employee, department and category are prefilled. The 14 columns follow the supplied two-row header design, with grouped settlement/month labels, alternating row shading, highlighted balances, wrapped notes and a green total row. Blank Month means all charge months with settlements and completed repayments through today; planned amount refers to the current month.
 
