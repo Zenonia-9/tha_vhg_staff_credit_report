@@ -402,6 +402,12 @@ class TestStaffCredit(TransactionCase):
                 arch = get_view_arch_from_file(file_path(view.arch_fs),
                                               'tha_vhg_staff_credit_report.' + xmlid)
                 self.assertIsNotNone(etree.fromstring(arch))
+        list_arch = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_list').arch_db)
+        state_field = list_arch.xpath('//field[@name="state"]')[0]
+        self.assertEqual(state_field.get('widget'), 'badge')
+        self.assertEqual(state_field.get('decoration-info'), "state == 'draft'")
+        self.assertEqual(state_field.get('decoration-success'), "state == 'posted'")
+        self.assertEqual(state_field.get('decoration-danger'), "state == 'cancel'")
         for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
                              ('tha.staff.credit.config', ['form']),
                              ('tha.staff.credit.operation', ['form']),

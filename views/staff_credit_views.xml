@@ -10,7 +10,9 @@
                     <button name="action_settings" type="object" string="Settings" display="always" context="{'tha_staff_credit_company_settings': True}" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
                 <field name="name"/><field name="charge_date"/><field name="employee_id"/><field name="department_id"/>
-                <field name="state"/><field name="description"/><field name="source_move_id"/><field name="amount"/>
+                <field name="state" widget="badge" decoration-info="state == 'draft'"
+                       decoration-success="state == 'posted'" decoration-danger="state == 'cancel'"/>
+                <field name="description"/><field name="source_move_id"/><field name="amount"/>
                 <field name="settled_amount" sum="Settled"/><field name="balance" sum="Balance"/>
                 <field name="company_id" groups="base.group_multi_company"/><field name="currency_id" column_invisible="True"/>
             </list>

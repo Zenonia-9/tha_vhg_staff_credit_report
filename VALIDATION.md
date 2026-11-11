@@ -1,5 +1,11 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — Colored stage badge in list view (19.0.2.0.21)
+
+- Render the Draft, Posted and Cancelled stages as colored Odoo badges in the Staff Credit list: blue, green and red respectively. Added a regression that checks the badge widget and all three state decorations.
+- Create one clearly labeled local Shop Sphere workflow test bill and linked draft customer invoice after the module upgrade. Verify the journal items use the configured Staff Credit account as Dr and original invoice credit account as Cr. Leave the invoice in Draft; do not post it.
+- Upgrade local THA and run the focused addon suite. Restart `odoo_19` and inspect `logs/server.log` for registry and HTTP startup.
+
 ## 2026-11-11 — Draft invoices and lifecycle stages (19.0.2.0.20)
 
 - Added a company-configured original invoice income account, defaulting to account code 510585 where present. Draft Staff Credit bills create linked customer invoice drafts; posting the invoice links its Staff Credit receivable debit and moves the bill to Posted. Cancelling the draft invoice moves it to Cancelled. The form statusbar shows Draft, Posted and Cancelled. Non-posted bills show zero settled amount and balance and are excluded from Excel and deduction processing.
