@@ -2,8 +2,10 @@ import base64
 import io
 import math
 import textwrap
+from datetime import date, datetime
 
 import xlsxwriter
+from openpyxl import load_workbook
 from dateutil.relativedelta import relativedelta
 
 from odoo import Command, api, fields, models, _
@@ -17,7 +19,8 @@ class CreditOperation(models.TransientModel):
     _description = 'Staff Credit Export / Monthly Deductions'
     _check_company_auto = True
 
-    mode = fields.Selection([('export', 'Export Excel'), ('deductions', 'Generate Monthly Deductions')],
+    mode = fields.Selection([('export', 'Export Excel'), ('deductions', 'Generate Monthly Deductions'),
+                             ('import', 'Import Excel')],
                             required=True, default='export')
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
     bill_ids = fields.Many2many('tha.staff.credit', string='Selected staff credit bills', check_company=True)
@@ -36,6 +39,97 @@ class CreditOperation(models.TransientModel):
     journal_id = fields.Many2one('account.journal', string='Deduction journal', check_company=True)
     file_data = fields.Binary(attachment=False, readonly=True)
     filename = fields.Char(readonly=True)
+    import_file = fields.Binary(string='Excel file (.xlsx)')
+
+    def action_import(self):
+        self.ensure_one()
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may import entries.'))
+        if not self.env.user.has_group('account.group_account_user'):
+            raise AccessError(_('Importing entries requires Accounting access.'))
+        if not self.import_file:
+            raise UserError(_('Upload an Excel workbook to import.'))
+        try:
+            workbook = load_workbook(io.BytesIO(base64.b64decode(self.import_file)), read_only=True, data_only=True)
+            sheet = workbook.active
+            rows = sheet.iter_rows(values_only=True)
+            headers = [str(value or '').strip().lower() for value in next(rows)]
+            required = ['employee', 'charge date', 'amount', 'category', 'description',
+                        'repayment from', 'installment count']
+            if headers != required + (['anzer reference'] if headers == required + ['anzer reference'] else []):
+                if headers not in (required, required + ['anzer reference']):
+                    raise UserError(_('Use these columns in order: Employee, Charge Date, Amount, Category, Description, Repayment From, Installment Count, Anzer Reference (optional).'))
+            config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
+            if not config:
+                raise UserError(_('Configure Staff Credit accounts and journal before importing.'))
+            created = self.env['tha.staff.credit']
+            for row_number, values in enumerate(rows, start=2):
+                if not values or not any(value not in (None, '') for value in values):
+                    continue
+                data = dict(zip(headers, values))
+                try:
+                    employee_name = str(data.get('employee') or '').strip()
+                    employees = self.env['hr.employee.public'].search([
+                        ('name', '=', employee_name), ('company_id', '=', self.company_id.id)])
+                    if len(employees) != 1:
+                        raise ValueError(_('Employee must match exactly one employee in the selected company.'))
+                    # Import needs the employee's company work contact; the public record is used for matching.
+                    employee = self.env['hr.employee'].sudo().browse(employees.id)
+                    def parse_date(value):
+                        if isinstance(value, datetime):
+                            return value.date()
+                        if isinstance(value, date):
+                            return value
+                        return fields.Date.to_date(str(value).strip())
+                    category = str(data.get('category') or '').strip().lower()
+                    if category not in dict(CATEGORIES):
+                        raise ValueError(_('Category must be one of: hospital, damage, penalty, meals, other.'))
+                    amount = float(data.get('amount'))
+                    count = int(data.get('installment count'))
+                    if amount <= 0 or count <= 0 or not employee.work_contact_id or not employee.department_id:
+                        raise ValueError(_('Amount, installment count, employee department, and work contact must be valid.'))
+                    bill = self.env['tha.staff.credit'].create({
+                        'company_id': self.company_id.id, 'employee_id': employee.id,
+                        'department_id': employee.department_id.id, 'partner_id': employee.work_contact_id.id,
+                        'charge_date': parse_date(data.get('charge date')), 'amount': amount,
+                        'category': category, 'description': str(data.get('description') or '').strip(),
+                        'start_month': parse_date(data.get('repayment from')).replace(day=1),
+                        'installment_count': count, 'anzer_reference': str(data.get('anzer reference') or '').strip(),
+                    })
+                    bill.with_context(tha_staff_credit_invoice_credit_account_id=config.invoice_credit_account_id.id).action_create_original_invoice()
+                    created |= bill
+                except Exception as error:
+                    if isinstance(error, UserError):
+                        raise UserError(_('Row %s: %s', row_number, error.args[0])) from error
+                    raise UserError(_('Row %s: %s', row_number, error)) from error
+            if not created:
+                raise UserError(_('The workbook contains no entry rows.'))
+            return {'type': 'ir.actions.act_window', 'name': _('Imported Staff Credit Drafts'),
+                    'res_model': 'tha.staff.credit', 'view_mode': 'list,form',
+                    'domain': [('id', 'in', created.ids)], 'target': 'current'}
+        except UserError:
+            raise
+        except Exception as error:
+            raise UserError(_('Could not read this .xlsx workbook: %s', error)) from error
+
+    def action_download_import_template(self):
+        self.ensure_one()
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        sheet = workbook.add_worksheet('Staff Credit Import')
+        headers = ['Employee', 'Charge Date', 'Amount', 'Category', 'Description',
+                   'Repayment From', 'Installment Count', 'Anzer Reference']
+        header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E2F3', 'border': 1})
+        sheet.write_row(0, 0, headers, header_format)
+        sheet.freeze_panes(1, 0)
+        sheet.autofilter(0, 0, 0, len(headers) - 1)
+        for column, width in enumerate([28, 16, 16, 18, 52, 18, 20, 24]):
+            sheet.set_column(column, column, width)
+        workbook.close()
+        self.write({'file_data': base64.b64encode(output.getvalue()),
+                    'filename': 'staff_credit_import_template.xlsx'})
+        return {'type': 'ir.actions.act_url', 'url': '/web/content/%s/%s/file_data/%s?download=true' %
+                (self._name, self.id, self.filename), 'target': 'download'}
 
     @api.depends('bill_ids.employee_id')
     def _compute_employee_ids(self):
@@ -335,6 +429,8 @@ class CreditSettingsWizard(models.TransientModel):
     account_id = fields.Many2one('account.account', required=True, check_company=True, string='Staff Credit account')
     salary_account_id = fields.Many2one('account.account', required=True, check_company=True,
                                         string='Salary expense / Cash-Bank clearing account')
+    invoice_credit_account_id = fields.Many2one('account.account', check_company=True,
+                                                string='Original invoice credit account')
     journal_id = fields.Many2one('account.journal', required=True, check_company=True, string='Deduction journal')
     save_as_default = fields.Boolean(string='Save as company default', default=False)
 
@@ -348,6 +444,10 @@ class CreditSettingsWizard(models.TransientModel):
             if field in names and not values.get(field):
                 values[field] = (getattr(config, config_field).id if config else self.env['account.account'].search([
                     ('company_ids', 'in', company.id), ('code', '=', code)], limit=1).id)
+        if 'invoice_credit_account_id' in names and not values.get('invoice_credit_account_id'):
+            values['invoice_credit_account_id'] = (config.invoice_credit_account_id.id if config else
+                self.env['account.account'].with_company(company).search([
+                    ('company_ids', 'in', company.id), ('code', '=', '510585')], limit=1).id)
         if 'journal_id' in names and not values.get('journal_id') and config:
             values['journal_id'] = config.journal_id.id
         return values
@@ -359,7 +459,8 @@ class CreditSettingsWizard(models.TransientModel):
         if self.save_as_default:
             config = self.env['tha.staff.credit.config'].search([('company_id', '=', self.company_id.id)], limit=1)
             values = {'account_id': self.account_id.id, 'salary_account_id': self.salary_account_id.id,
-                      'journal_id': self.journal_id.id}
+                      'journal_id': self.journal_id.id,
+                      'invoice_credit_account_id': self.invoice_credit_account_id.id}
             if config:
                 config.write(values)
             else:
@@ -369,4 +470,5 @@ class CreditSettingsWizard(models.TransientModel):
                 'view_mode': 'form', 'target': 'current',
                 'context': {'tha_staff_credit_account_id': self.account_id.id,
                             'tha_staff_credit_salary_account_id': self.salary_account_id.id,
-                            'tha_staff_credit_journal_id': self.journal_id.id}}
+                            'tha_staff_credit_journal_id': self.journal_id.id,
+                            'tha_staff_credit_invoice_credit_account_id': self.invoice_credit_account_id.id}}

@@ -25,12 +25,16 @@ class AccountMove(models.Model):
             generated = changed.filtered(lambda m: m.line_ids.tha_staff_credit_id and m.state == 'posted')
             if generated:
                 raise UserError(_('Posted Staff Credit deductions must be corrected with a standard reversal.'))
-        if {'tha_staff_credit_batch_id', 'tha_staff_credit_id'} & values.keys():
+        if ('tha_staff_credit_batch_id' in values
+                or ('tha_staff_credit_id' in values and not self.env.context.get('tha_staff_credit_unlink'))):
             raise UserError(_('Staff Credit accounting links cannot be changed.'))
         result = super().write(values)
         if values.get('state') == 'cancel':
             pending = self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.tha_staff_credit_id.state == 'draft')
             pending.mapped('tha_staff_credit_id').sudo().write({'state': 'cancel'})
+        elif values.get('state') == 'draft':
+            cancelled = self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.tha_staff_credit_id.state == 'cancel')
+            cancelled.mapped('tha_staff_credit_id').sudo().write({'state': 'draft'})
         return result
 
     def _reverse_moves(self, default_values_list=None, cancel=False):
@@ -113,8 +117,12 @@ class AccountMove(models.Model):
 
     def unlink(self):
         self.tha_check_source_links()
-        if self.env['tha.staff.credit'].sudo().search_count([('invoice_id', 'in', self.ids)]):
-            raise UserError(_('Remove the pending Staff Credit invoice link before deleting this invoice.'))
+        linked_bills = self.env['tha.staff.credit'].sudo().search([('invoice_id', 'in', self.ids)])
+        if any(bill.invoice_id.state == 'posted' for bill in linked_bills):
+            raise UserError(_('A posted Staff Credit invoice cannot be deleted.'))
+        for bill in linked_bills:
+            bill.write({'invoice_id': False, **({'state': 'draft'} if bill.state == 'cancel' else {})})
+        self.sudo().with_context(tha_staff_credit_unlink=True).write({'tha_staff_credit_id': False})
         if any(m.state == 'posted' and m.line_ids.tha_staff_credit_id for m in self):
             raise UserError(_('Reverse posted Staff Credit deductions instead of deleting them.'))
         return super().unlink()

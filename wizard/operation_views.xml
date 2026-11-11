@@ -4,17 +4,19 @@
         <field name="name">tha.staff.credit.operation.form</field><field name="model">tha.staff.credit.operation</field>
         <field name="arch" type="xml">
             <form string="Staff Credit Report">
-            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month" placeholder="Leave blank to include all months"/><field name="bill_ids" widget="many2many_tags" readonly="1" force_save="1" invisible="mode != 'deductions'"/>
+            <group><field name="mode" invisible="1"/><field name="company_id"/><field name="month" placeholder="Leave blank to include all months" invisible="mode == 'import'"/><field name="bill_ids" widget="many2many_tags" readonly="1" force_save="1" invisible="mode != 'deductions'"/>
                 <field name="employee_ids" string="Selected employees" widget="many2many_tags" readonly="1" invisible="not bill_ids"/>
                 <field name="employee_id" domain="[('company_id', '=', company_id)]" invisible="mode == 'deductions'"/>
                 <field name="department_id" invisible="mode == 'deductions'"/>
                 <field name="category" invisible="mode == 'deductions'"/>
                 <field name="status" invisible="mode == 'deductions'"/>
             </group>
+            <group invisible="mode != 'import'"><button name="action_download_import_template" type="object" string="Download Import Template"/><field name="import_file" filename="filename" required="mode == 'import'"/><field name="filename" invisible="1"/><p>Upload .xlsx with one entry per row and columns: Employee, Charge Date, Amount, Category (hospital/damage/penalty/meals/other), Description, Repayment From, Installment Count, Anzer Reference (optional). Dates may be Excel dates or YYYY-MM-DD. Imports create linked draft invoices using the configured Staff Credit debit and Original Invoice credit accounts. Review and post each invoice through Accounting.</p></group>
             <p invisible="mode != 'deductions'">Creates one month-end draft per staff member, using only the selected staff credit bills. Missing selected bills are added to an existing draft; posted batches open only when all selected bills are already included. To change an unused batch, delete its draft and generate it again. Posting is a separate Accounting action.</p>
             <p invisible="mode != 'export'">When bills are selected, only those bills are exported. From a bill form, only that bill is exported. For a company-wide report, open Export Excel from the list without selecting rows. Optional filters narrow the result. Settlement, balance and completed repayments are calculated through month-end when a month is selected, or through today when Month is blank. Times shows completed / total repayments, covering the oldest installments first. Drafts do not count; the monthly amount remains planned.</p>
             <footer>
                 <button name="action_export" type="object" string="Export Excel" class="btn-primary" invisible="mode != 'export'"/>
+                <button name="action_import" type="object" string="Import Excel" class="btn-primary" invisible="mode != 'import'" groups="tha_vhg_staff_credit_report.group_manager,account.group_account_user"/>
                 <button name="action_generate" type="object" string="Generate / Open Drafts" class="btn-primary" invisible="mode != 'deductions'" groups="tha_vhg_staff_credit_report.group_manager"/>
                 <button string="Cancel" special="cancel"/>
             </footer>
@@ -29,5 +31,10 @@
         <field name="name">Generate Monthly Deductions</field><field name="res_model">tha.staff.credit.operation</field>
         <field name="view_mode">form</field><field name="target">new</field>
         <field name="context">{'default_mode': 'deductions'}</field>
+    </record>
+    <record id="action_import" model="ir.actions.act_window">
+        <field name="name">Import Staff Credit Entries</field><field name="res_model">tha.staff.credit.operation</field>
+        <field name="view_mode">form</field><field name="target">new</field>
+        <field name="context">{'default_mode': 'import'}</field>
     </record>
 </odoo>

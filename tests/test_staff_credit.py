@@ -1,5 +1,7 @@
 import base64
 import io
+
+from openpyxl import Workbook, load_workbook
 import zipfile
 from datetime import date
 from xml.etree import ElementTree as ET
@@ -107,6 +109,33 @@ class TestStaffCredit(TransactionCase):
         invoice.button_cancel()
         bill.invalidate_recordset()
         self.assertEqual(bill.state, 'cancel')
+
+    def test_delete_unposted_original_invoice_releases_draft_bill(self):
+        bill = self._pending_bill()
+        invoice = self.env['account.move'].browse(
+            bill.with_user(self.manager).action_create_original_invoice()['res_id'])
+        invoice.unlink()
+        bill.invalidate_recordset()
+        self.assertFalse(bill.invoice_id)
+        self.assertEqual(bill.state, 'draft')
+
+    def test_cancelled_invoice_can_return_to_draft_and_cancelled_bill_can_be_deleted(self):
+        bill = self._pending_bill()
+        invoice = self.env['account.move'].browse(
+            bill.with_user(self.manager).action_create_original_invoice()['res_id'])
+        invoice.button_cancel()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'cancel')
+        bill.with_user(self.manager).action_reset_to_draft()
+        invoice.invalidate_recordset()
+        bill.invalidate_recordset()
+        self.assertEqual(invoice.state, 'draft')
+        self.assertEqual(bill.state, 'draft')
+        invoice.button_cancel()
+        bill.invalidate_recordset()
+        bill.unlink()
+        self.assertFalse(bill.exists())
+        self.assertFalse(invoice.tha_staff_credit_id)
 
     def _operation(self, month='2026-09-01', **values):
         values.setdefault('bill_ids', [Command.set(self.env['tha.staff.credit'].search([
@@ -297,6 +326,37 @@ class TestStaffCredit(TransactionCase):
         operation = self._operation().with_user(self.manager)
         action = operation.action_generate()
         self.assertEqual(len(self.env['account.move'].search(action['domain'])), 1)
+
+    def test_backdated_excel_import_creates_linked_draft_invoice(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(['Employee', 'Charge Date', 'Amount', 'Category', 'Description',
+                      'Repayment From', 'Installment Count', 'Anzer Reference'])
+        sheet.append([self.employee.name, date(2026, 4, 15), 1500, 'hospital',
+                      'Backdated outpatient bill', date(2026, 5, 1), 2, 'BACKDATE-TEST'])
+        output = io.BytesIO()
+        workbook.save(output)
+        operation = self.env['tha.staff.credit.operation'].create({
+            'mode': 'import', 'company_id': self.company.id,
+            'import_file': base64.b64encode(output.getvalue()),
+        })
+        template_action = operation.action_download_import_template()
+        self.assertEqual(template_action['type'], 'ir.actions.act_url')
+        template = load_workbook(io.BytesIO(base64.b64decode(operation.file_data)), read_only=True)
+        self.assertEqual(next(template.active.iter_rows(values_only=True)),
+                         ('Employee', 'Charge Date', 'Amount', 'Category', 'Description',
+                          'Repayment From', 'Installment Count', 'Anzer Reference'))
+        action = operation.with_user(self.manager).action_import()
+        bill = self.env['tha.staff.credit'].search(action['domain'])
+        self.assertEqual(len(bill), 1)
+        self.assertEqual(bill.charge_date, date(2026, 4, 15))
+        self.assertEqual(bill.amount, 1500)
+        self.assertEqual(bill.state, 'draft')
+        self.assertEqual(bill.invoice_id.state, 'draft')
+        self.assertEqual(bill.invoice_id.invoice_date, bill.charge_date)
+        self.assertEqual(bill.invoice_id.line_ids.filtered(lambda l: l.display_type == 'payment_term').account_id,
+                         self.account)
+        self.assertEqual(bill.invoice_id.invoice_line_ids.account_id, self.invoice_credit)
 
     def test_filters_and_export_structure(self):
         bill = self._bill()

@@ -6,15 +6,16 @@
             <list string="Staff Credit Report" decoration-muted="balance == 0" import="0">
                 <header>
                     <button name="%(action_export)d" type="action" string="Export Excel" display="always"/>
+                    <button name="%(action_import)d" type="action" string="Import Excel" display="always" groups="tha_vhg_staff_credit_report.group_manager" context="{'default_mode': 'import'}"/>
                     <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager"/>
                     <button name="action_settings" type="object" string="Settings" display="always" context="{'tha_staff_credit_company_settings': True}" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
                 <field name="name"/><field name="charge_date"/><field name="employee_id"/><field name="department_id"/>
-                <field name="state" widget="badge" decoration-info="state == 'draft'"
-                       decoration-success="state == 'posted'" decoration-danger="state == 'cancel'"/>
                 <field name="description"/><field name="source_move_id"/><field name="amount"/>
                 <field name="settled_amount" sum="Settled"/><field name="balance" sum="Balance"/>
                 <field name="company_id" groups="base.group_multi_company"/><field name="currency_id" column_invisible="True"/>
+                <field name="state" widget="badge" decoration-info="state == 'draft'"
+                       decoration-success="state == 'posted'" decoration-danger="state == 'cancel'"/>
             </list>
         </field>
     </record>
@@ -24,6 +25,7 @@
             <form string="Staff Credit Bill">
                 <header>
                     <button name="action_create_original_invoice" type="object" string="Create Draft Invoice" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager,account.group_account_user" invisible="state != 'draft' or invoice_id"/>
+                    <button name="action_reset_to_draft" type="object" string="Reset to Draft" groups="tha_vhg_staff_credit_report.group_manager,account.group_account_user" invisible="state != 'cancel' or not invoice_id"/>
                     <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?" invisible="state != 'posted' or schedule_ids"/>
                     <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id, 'tha_from_credit_form': True}" invisible="state != 'posted'"/>
                     <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager" invisible="state != 'posted'"/>
@@ -122,6 +124,7 @@
                     <field name="account_id" domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable'), ('reconcile', '=', True)]"/>
                     <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost', 'asset_cash'])]"/>
                     <field name="journal_id" domain="[('company_id', '=', company_id), ('type', '=', 'general')]"/>
+                    <field name="invoice_credit_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['income', 'income_other'])]"/>
                     <field name="save_as_default"/>
                 </group>
                 <footer><button name="action_apply" type="object" string="Apply to this bill" class="btn-primary"/><button string="Cancel" special="cancel"/></footer>

@@ -1,5 +1,11 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — List stage placement, invoice settings and deletion (19.0.2.0.22)
+
+- Moved the colored State badge to the final list column. Added Original invoice credit account to the bill Settings dialog; applying a bill-specific setting passes it to invoice creation, and saving as company default updates the company configuration.
+- Deleting an unposted or cancelled generated invoice clears its pending Staff Credit link, leaving the bill in Draft so the invoice can be recreated. Posted invoices remain protected.
+- Added regression coverage for draft invoice deletion. Upgrade THA, run the focused suite, restart Odoo, and create a clearly labeled local Shop Sphere draft invoice with Dr 130100 / Cr 510585.
+
 ## 2026-11-11 — Colored stage badge in list view (19.0.2.0.21)
 
 - Render the Draft, Posted and Cancelled stages as colored Odoo badges in the Staff Credit list: blue, green and red respectively. Added a regression that checks the badge widget and all three state decorations.
@@ -141,3 +147,11 @@ Browser completion verified in the existing signed-in Chrome tab: demo bill SC/5
 Bill-form Excel export now pre-fills employee, department and category from the active bill. List Settings remains the company-default editor. Form Settings opens a bill-scoped override with an explicit Save as company default checkbox; deduction generation uses the chosen values for the current bill without saving defaults unless selected. Excel uses the supplied two-level header layout and a differently colored green total row. Version 19.0.2.0.8.
 
 Local upgrade attempt for 19.0.2.0.8 started but stalled during the Odoo module-list scan after unrelated addon manifest warnings; it was interrupted before this module began loading. No module upgrade or database changes were confirmed. Static Python/XML/manifest checks passed. Runtime upgrade, service restart, and browser verification remain pending.
+
+## Bulk Excel import and Staff Credit lifecycle — 2026-11-11
+
+Updated the addon to 19.0.2.0.26. Added a blank import template download and manager-only `.xlsx` import for backdated Staff Credit rows; imported rows create pending bills with linked draft customer invoices using company settings. Added cancellation reset-to-draft and deletion support for cancelled entries. The regression imports an XLSX row, checks the blank template headers, verifies the generated invoice accounts/date, resets a cancelled invoice to draft, deletes a cancelled bill, and exercises report export.
+
+Validation: Python compileall, XML parsing, `git diff --check`, and THA module upgrade with the complete addon suite passed (**38 tests, 0 failures, 0 errors**). Local report export completed and served `staff_credit_all_months.xlsx` with HTTP 200. Restarted `odoo_19` after upgrade.
+
+Local browser demo: Shop Sphere staff credit `SC/4/000007`, Hsu Thawda Cho, 150,000 MMK, charged 2026-11-11, outpatient consultation and prescribed medicines. Invoice `INV/2026/11/11/0001` posted with Dr 130100 / Cr 510585. Two installments of 75,000 MMK; November deduction `STCR/2026/11/0001` posted, leaving 75,000 MMK settled and 75,000 MMK open. Deleted cancelled test entry `SC/4/000005` through the local Odoo interface. This is local THA demo data, not production.

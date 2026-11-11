@@ -259,9 +259,21 @@ class StaffCredit(models.Model):
         return super().write(values)
 
     def unlink(self):
-        if any(b.allocation_ids or b.deduction_line_ids for b in self):
+        if any(b.state != 'cancel' and (b.allocation_ids or b.deduction_line_ids) for b in self):
             raise UserError(_('A bill with settlement or deduction links cannot be deleted.'))
+        for bill in self.filtered(lambda b: b.state == 'cancel'):
+            if bill.invoice_id:
+                bill.invoice_id.sudo().with_context(tha_staff_credit_unlink=True).write({'tha_staff_credit_id': False})
+                bill.sudo().write({'invoice_id': False})
         return super().unlink()
+
+    def action_reset_to_draft(self):
+        self.ensure_one()
+        if self.state != 'cancel' or not self.invoice_id or self.invoice_id.state != 'cancel':
+            raise UserError(_('Reset to Draft is available when the linked invoice is cancelled.'))
+        self.invoice_id.button_draft()
+        return {'type': 'ir.actions.act_window', 'res_model': self._name, 'res_id': self.id,
+                'view_mode': 'form', 'target': 'current'}
 
     def action_generate_schedule(self):
         self.ensure_one()
@@ -289,7 +301,10 @@ class StaffCredit(models.Model):
         if self.state != 'draft' or self.invoice_id:
             raise UserError(_('Create an invoice only for a pending bill without an existing invoice.'))
         config = self._config()
-        if not config.invoice_credit_account_id:
+        invoice_account = self.env['account.account'].browse(
+            self.env.context.get('tha_staff_credit_invoice_credit_account_id')) or config.invoice_credit_account_id
+        if (not invoice_account or self.company_id not in invoice_account.company_ids
+                or invoice_account.account_type not in ('income', 'income_other') or not invoice_account.active):
             raise UserError(_('Choose the original invoice credit account in Staff Credit Settings first.'))
         journal = self.env['account.journal'].search([
             ('company_id', '=', self.company_id.id), ('type', '=', 'sale'), ('active', '=', True)], limit=1)
@@ -301,7 +316,7 @@ class StaffCredit(models.Model):
             'ref': self.name, 'tha_staff_credit_id': self.id,
             'invoice_line_ids': [Command.create({
                 'name': self.description, 'quantity': 1, 'price_unit': self.amount,
-                'account_id': config.invoice_credit_account_id.id,
+                'account_id': invoice_account.id,
             })],
         })
         receivable = invoice.line_ids.filtered(lambda line: line.display_type == 'payment_term')

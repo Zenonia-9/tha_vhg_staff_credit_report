@@ -122,3 +122,8 @@ Shop Sphere examples available for review:
 The first local example was previously SC/4/000174. Its chatter records the renumbering; old posted accounting labels retain that former reference.
 
 Examples are copied or adapted from the issue's supplied workbook solely for local Shop Sphere review. They are labelled in each bill's Note. Original spreadsheet references are retained as source references, not reused as newly issued Odoo document numbers. Repayment months inferred from the workbook are stated in the notes. They are not a live hospital historical import.
+
+
+## Import backdated entries
+
+From the Staff Credit list, managers with Accounting access can choose **Import Excel**. Prepare an .xlsx file with columns in this order: Employee, Charge Date, Amount, Category, Description, Repayment From, Installment Count, Anzer Reference (optional). Dates may be Excel dates or YYYY-MM-DD. Category must be hospital, damage, penalty, meals, or other. Employee names must identify one employee in the selected company. Each imported row creates a pending Staff Credit bill and linked customer invoice in Draft, using the company's configured Staff Credit debit and Original Invoice credit accounts. Review each invoice and post it through Accounting to activate the bill. A validation error identifies the row and rolls back the import. Excel export remains the repayment report; it is not an import template.
