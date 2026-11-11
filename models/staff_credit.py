@@ -14,6 +14,8 @@ class CreditConfig(models.Model):
 
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
     account_id = fields.Many2one('account.account', required=True, check_company=True, string='Staff Credit account')
+    invoice_credit_account_id = fields.Many2one('account.account', check_company=True,
+                                                string='Original invoice credit account')
     salary_account_id = fields.Many2one('account.account', required=True, check_company=True,
                                         string='Salary expense / Cash-Bank clearing account')
     journal_id = fields.Many2one('account.journal', required=True, check_company=True,
@@ -25,23 +27,29 @@ class CreditConfig(models.Model):
     def default_get(self, names):
         values = super().default_get(names)
         company = self.env['res.company'].browse(values.get('company_id', self.env.company.id))
-        for field, code in (('account_id', '130100'), ('salary_account_id', '701010')):
+        accounts = self.env['account.account'].with_company(company)
+        for field, code in (('account_id', '130100'), ('salary_account_id', '701010'),
+                            ('invoice_credit_account_id', '510585')):
             if field in names:
-                values[field] = self.env['account.account'].search([
+                values[field] = accounts.search([
                     ('company_ids', 'in', company.id), ('code', '=', code)], limit=1).id
         return values
 
-    @api.constrains('company_id', 'account_id', 'salary_account_id', 'journal_id')
+    @api.constrains('company_id', 'account_id', 'salary_account_id', 'invoice_credit_account_id', 'journal_id')
     def _check_settings(self):
         for config in self:
             if (config.company_id not in config.account_id.company_ids
                     or config.account_id.account_type != 'asset_receivable' or not config.account_id.reconcile
                     or config.company_id not in config.salary_account_id.company_ids
                     or config.salary_account_id.account_type not in ('expense', 'expense_direct_cost', 'asset_cash')
+                    or (config.invoice_credit_account_id and
+                        (config.company_id not in config.invoice_credit_account_id.company_ids
+                         or config.invoice_credit_account_id.account_type not in ('income', 'income_other')))
                     or config.journal_id.company_id != config.company_id or config.journal_id.type != 'general'
                     or not config.account_id.active or not config.salary_account_id.active
+                    or (config.invoice_credit_account_id and not config.invoice_credit_account_id.active)
                     or (config.journal_id.currency_id and config.journal_id.currency_id != config.company_id.currency_id)):
-                raise ValidationError(_('Select an active reconcilable receivable, expense or Cash/Bank deduction account, and general journal in this company.'))
+                raise ValidationError(_('Select active company accounts: a reconcilable receivable, an expense or Cash/Bank deduction account, and (when configured) an income account for original invoices, plus a general journal.'))
             if self.env['tha.staff.credit'].search_count([
                     ('company_id', '=', config.company_id.id), ('source_line_id.account_id', '!=', config.account_id.id)]):
                 raise ValidationError(_('Existing bill links use another Staff Credit account.'))
@@ -71,15 +79,19 @@ class StaffCredit(models.Model):
     _check_company_auto = True
 
     name = fields.Char(default='New', required=True, copy=False, readonly=True)
+    state = fields.Selection([('draft', 'Draft'), ('posted', 'Posted'), ('cancel', 'Cancelled')],
+                             default='draft', required=True, readonly=True, copy=False)
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
     currency_id = fields.Many2one(related='company_id.currency_id')
     employee_id = fields.Many2one('hr.employee.public', required=True, check_company=True, tracking=True)
     department_id = fields.Many2one('hr.department', required=True, check_company=True, tracking=True)
     partner_id = fields.Many2one('res.partner', required=True, check_company=True, tracking=True)
-    source_move_id = fields.Many2one('account.move', required=True, check_company=True, ondelete='restrict',
+    invoice_id = fields.Many2one('account.move', check_company=True, ondelete='restrict', copy=False,
+                                 readonly=True, string='Generated invoice')
+    source_move_id = fields.Many2one('account.move', check_company=True, ondelete='restrict',
                                     string='Original invoice / entry', tracking=True,
                                     domain="[('company_id', '=', company_id), ('state', '=', 'posted')]")
-    source_line_id = fields.Many2one('account.move.line', required=True, check_company=True, ondelete='restrict',
+    source_line_id = fields.Many2one('account.move.line', check_company=True, ondelete='restrict',
                                     string='Staff Credit debit item', tracking=True,
                                     domain="[('move_id', '=', source_move_id), ('debit', '>', 0)]")
     source_line_selection_required = fields.Boolean(
@@ -108,15 +120,21 @@ class StaffCredit(models.Model):
                 bill.start_month + relativedelta(months=max(0, bill.installment_count - 1), day=31)
                 if bill.start_month else False)
 
-    @api.depends('amount', 'allocation_ids.amount', 'allocation_ids.source_line_id.parent_state',
+    @api.depends('state', 'amount', 'allocation_ids.amount', 'allocation_ids.source_line_id.parent_state',
                  'deduction_line_ids.balance', 'deduction_line_ids.parent_state')
     def _compute_balance(self):
         for bill in self:
-            bill.settled_amount = bill._settled_at()
-            bill.balance = bill.amount - bill.settled_amount
+            if bill.state != 'posted':
+                bill.settled_amount = 0
+                bill.balance = 0
+            else:
+                bill.settled_amount = bill._settled_at()
+                bill.balance = bill.amount - bill.settled_amount
 
     def _settled_at(self, cutoff=None):
         self.ensure_one()
+        if self.state != 'posted':
+            return 0
         manual = self.allocation_ids.filtered(lambda a: a.source_line_id.parent_state == 'posted'
                                                and (not cutoff or a.date <= cutoff))
         generated = self.deduction_line_ids.filtered(lambda l: l.parent_state == 'posted'
@@ -169,6 +187,9 @@ class StaffCredit(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        for vals in vals_list:
+            if not vals.get('state'):
+                vals['state'] = 'posted' if vals.get('source_move_id') else 'draft'
         records = super().create(vals_list)
         for bill in records:
             # The company settings lock also serializes first-time sequence creation.
@@ -188,12 +209,28 @@ class StaffCredit(models.Model):
             bill.name = sequence.next_by_id()
         return records
 
-    @api.constrains('source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id',
+    @api.constrains('state', 'invoice_id', 'source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id',
                     'employee_id', 'department_id', 'charge_date', 'start_month', 'installment_count')
     def _check_bill(self):
         for bill in self:
             config = bill._config()
             config._serialize()
+            if bill.state != 'posted':
+                if bill.source_move_id or bill.source_line_id:
+                    raise ValidationError(_('A draft or cancelled bill cannot already have a posted source link.'))
+                if (bill.invoice_id and (bill.invoice_id.company_id != bill.company_id
+                        or bill.invoice_id.move_type != 'out_invoice'
+                        or bill.invoice_id.tha_staff_credit_id != bill
+                        or bill.invoice_id.partner_id != bill.partner_id
+                        or bill.invoice_id.invoice_date != bill.charge_date
+                        or bill.invoice_id.state != ('draft' if bill.state == 'draft' else 'cancel'))):
+                    raise ValidationError(_('The linked invoice must be this bill’s company customer invoice.'))
+                if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
+                        or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)
+                        or bill.employee_id.company_id != bill.company_id
+                        or (bill.department_id.company_id and bill.department_id.company_id != bill.company_id)):
+                    raise ValidationError(_('Use a positive bill, 1-600 installments, and a repayment start no earlier than the bill month. Staff and department must belong to the company.'))
+                continue
             line = bill.source_line_id
             if (line.move_id != bill.source_move_id or line.parent_state != 'posted' or line.debit <= 0
                     or line.account_id != config.account_id or line.company_id != bill.company_id
@@ -228,6 +265,8 @@ class StaffCredit(models.Model):
 
     def action_generate_schedule(self):
         self.ensure_one()
+        if self.state != 'posted':
+            raise UserError(_('Post the original invoice before generating its repayment plan.'))
         if self.allocation_ids or self.deduction_line_ids:
             raise UserError(_('The schedule cannot be replaced after settlements or deductions are linked.'))
         amount = self.currency_id.round(self.amount / self.installment_count)
@@ -240,6 +279,39 @@ class StaffCredit(models.Model):
             'amount': final if i == self.installment_count - 1 else amount,
         }) for i in range(self.installment_count)]})
         self.message_post(body=_('Generated monthly repayment plan.'))
+
+    def action_create_original_invoice(self):
+        self.ensure_one()
+        if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):
+            raise AccessError(_('Only Staff Credit managers may create original invoices.'))
+        if not self.env.user.has_group('account.group_account_user'):
+            raise AccessError(_('Creating an original invoice requires Accounting access.'))
+        if self.state != 'draft' or self.invoice_id:
+            raise UserError(_('Create an invoice only for a pending bill without an existing invoice.'))
+        config = self._config()
+        if not config.invoice_credit_account_id:
+            raise UserError(_('Choose the original invoice credit account in Staff Credit Settings first.'))
+        journal = self.env['account.journal'].search([
+            ('company_id', '=', self.company_id.id), ('type', '=', 'sale'), ('active', '=', True)], limit=1)
+        if not journal:
+            raise UserError(_('Configure an active sales journal for this company before creating invoices.'))
+        invoice = self.env['account.move'].create({
+            'move_type': 'out_invoice', 'company_id': self.company_id.id, 'journal_id': journal.id,
+            'partner_id': self.partner_id.id, 'invoice_date': self.charge_date,
+            'ref': self.name, 'tha_staff_credit_id': self.id,
+            'invoice_line_ids': [Command.create({
+                'name': self.description, 'quantity': 1, 'price_unit': self.amount,
+                'account_id': config.invoice_credit_account_id.id,
+            })],
+        })
+        receivable = invoice.line_ids.filtered(lambda line: line.display_type == 'payment_term')
+        if len(receivable) != 1:
+            raise UserError(_('The generated invoice must have exactly one receivable line.'))
+        receivable.write({'account_id': config.account_id.id})
+        self.invoice_id = invoice
+        self.message_post(body=_('Created original customer invoice draft: %s', invoice.name))
+        return {'type': 'ir.actions.act_window', 'name': _('Original Customer Invoice'),
+                'res_model': 'account.move', 'res_id': invoice.id, 'view_mode': 'form', 'target': 'current'}
 
     def action_settings(self):
         if not self.env.user.has_group('tha_vhg_staff_credit_report.group_manager'):

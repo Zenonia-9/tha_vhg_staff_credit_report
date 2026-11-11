@@ -21,14 +21,20 @@ class TestStaffCredit(TransactionCase):
             'account_type': 'asset_receivable', 'reconcile': True, 'company_ids': [Command.set(cls.company.ids)]})
         cls.salary = cls.env['account.account'].create({'name': 'Staff TEST Salary', 'code': '701010',
             'account_type': 'expense', 'company_ids': [Command.set(cls.company.ids)]})
+        cls.invoice_credit = cls.env['account.account'].create({'name': 'Staff TEST Invoice Income', 'code': '510585',
+            'account_type': 'income', 'company_ids': [Command.set(cls.company.ids)]})
         cls.journal = cls.env['account.journal'].create({'name': 'Staff TEST Journal', 'code': 'SCT',
                                                                        'type': 'general', 'company_id': cls.company.id})
+        cls.sales_journal = cls.env['account.journal'].create({'name': 'Staff TEST Sales', 'code': 'SCS',
+                                                               'type': 'sale', 'company_id': cls.company.id})
         cls.config = cls.env['tha.staff.credit.config'].create({'company_id': cls.company.id,
-            'account_id': cls.account.id, 'salary_account_id': cls.salary.id, 'journal_id': cls.journal.id})
+            'account_id': cls.account.id, 'salary_account_id': cls.salary.id,
+            'invoice_credit_account_id': cls.invoice_credit.id, 'journal_id': cls.journal.id})
         cls.department = cls.env['hr.department'].create({'name': 'Staff TEST Department', 'company_id': cls.company.id})
         cls.employee = cls.env['hr.employee'].create({'name': 'Staff TEST Employee', 'company_id': cls.company.id,
                                                      'department_id': cls.department.id})
         cls.partner = cls.employee.work_contact_id
+        cls.partner.with_company(cls.company).property_account_receivable_id = cls.account
         cls.reader = new_test_user(cls.env, login='staff_credit_test_reader',
             groups='base.group_user,tha_vhg_staff_credit_report.group_reader',
             company_id=cls.company.id, company_ids=[Command.set(cls.company.ids)])
@@ -54,6 +60,53 @@ class TestStaffCredit(TransactionCase):
             'start_month': '2026-09-01', 'installment_count': count, 'anzer_reference': 'ANZER-TEST'})
         bill.action_generate_schedule()
         return bill
+
+    def _pending_bill(self, amount=300):
+        return self.env['tha.staff.credit'].create({'company_id': self.company.id,
+            'employee_id': self.employee.id, 'department_id': self.department.id, 'partner_id': self.partner.id,
+            'charge_date': '2026-08-31', 'description': 'Staff Credit invoice test', 'amount': amount,
+            'start_month': '2026-09-01', 'installment_count': 3})
+
+    def test_original_invoice_draft_post_and_cancel_stage(self):
+        bill = self._pending_bill()
+        self.assertEqual(bill.state, 'draft')
+        self.assertEqual((bill.settled_amount, bill.balance), (0, 0))
+        action = bill.with_user(self.manager).action_create_original_invoice()
+        invoice = self.env['account.move'].browse(action['res_id'])
+        self.assertEqual(invoice.state, 'draft')
+        self.assertEqual(invoice.tha_staff_credit_id, bill)
+        self.assertEqual(invoice.move_type, 'out_invoice')
+        self.assertEqual(invoice.invoice_date, bill.charge_date)
+        self.assertEqual(invoice.invoice_line_ids.account_id, self.invoice_credit)
+        term = invoice.line_ids.filtered(lambda line: line.display_type == 'payment_term')
+        self.assertEqual(len(term), 1)
+        self.assertEqual(term.account_id, self.account)
+        self.assertEqual(term.debit, bill.amount)
+        self.assertEqual(invoice.invoice_line_ids.tax_ids, self.env['account.tax'])
+        with self.assertRaises(ValidationError), self.env.cr.savepoint():
+            invoice.invoice_line_ids.account_id = self.salary
+            invoice.action_post()
+        self.assertEqual(invoice.state, 'draft')
+        export = self.env['tha.staff.credit.operation'].create({'company_id': self.company.id, 'mode': 'export'})
+        self.assertNotIn(bill, export._bills())
+        with self.assertRaises(UserError):
+            self._operation().with_user(self.manager).action_generate()
+        invoice.action_post()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'posted')
+        self.assertEqual(bill.source_move_id, invoice)
+        self.assertEqual(bill.source_line_id.account_id, self.account)
+        self.assertEqual(bill.source_line_id.debit, bill.amount)
+        self.assertEqual(self.env['tha.staff.credit'].search_count([('invoice_id', '=', invoice.id)]), 1)
+        self.assertIn(bill, export._bills())
+
+    def test_cancelled_original_invoice_marks_staff_credit_cancelled(self):
+        bill = self._pending_bill()
+        invoice = self.env['account.move'].browse(
+            bill.with_user(self.manager).action_create_original_invoice()['res_id'])
+        invoice.button_cancel()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'cancel')
 
     def _operation(self, month='2026-09-01', **values):
         values.setdefault('bill_ids', [Command.set(self.env['tha.staff.credit'].search([
@@ -325,8 +378,7 @@ class TestStaffCredit(TransactionCase):
         revenue = self.env['account.account'].create({'name': 'Staff TEST Revenue', 'code': '400100',
             'account_type': 'income', 'company_ids': [Command.set(self.company.ids)]})
         self.partner.with_company(self.company).property_account_receivable_id = self.account
-        sales = self.env['account.journal'].create({'name': 'Staff TEST Sales', 'code': 'SCS',
-                                                  'type': 'sale', 'company_id': self.company.id})
+        sales = self.sales_journal
         invoice = self.env['account.move'].create({'company_id': self.company.id, 'journal_id': sales.id,
             'move_type': 'out_invoice', 'invoice_date': '2026-08-31', 'partner_id': self.partner.id,
             'invoice_line_ids': [Command.create({'name': 'Staff TEST hospital bill', 'account_id': revenue.id,
@@ -371,6 +423,23 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(self.config.journal_id, self.journal)
         with self.assertRaises(AccessError):
             self.env['tha.staff.credit'].with_user(self.reader).action_settings()
+
+    def test_invoice_credit_account_default_and_validation(self):
+        defaults = self.env['tha.staff.credit.config'].with_company(self.company).default_get(
+            ['company_id', 'invoice_credit_account_id'])
+        self.assertEqual(defaults['invoice_credit_account_id'], self.invoice_credit.id)
+        with self.assertRaises(ValidationError), self.env.cr.savepoint():
+            self.config.write({'invoice_credit_account_id': self.account.id})
+        other = self.env['res.company'].create({'name': 'Staff Credit invoice account company',
+                                                'currency_id': self.company.currency_id.id})
+        other_income = self.env['account.account'].create({'name': 'Other Income', 'code': '510585',
+            'account_type': 'income', 'company_ids': [Command.set(other.ids)]})
+        with self.assertRaises(ValidationError), self.env.cr.savepoint():
+            self.config.write({'invoice_credit_account_id': other_income.id})
+        bill = self._pending_bill()
+        with self.assertRaises(UserError):
+            self.config.invoice_credit_account_id = False
+            bill.with_user(self.manager).action_create_original_invoice()
 
     def test_list_settings_empty_single_and_multiple_selection(self):
         model = self.env['tha.staff.credit'].with_user(self.manager)
@@ -435,8 +504,10 @@ class TestStaffCredit(TransactionCase):
             'account_type': 'expense', 'company_ids': [Command.set(other.ids)]})
         journal = other_env['account.journal'].create({'name': 'Staff Credit', 'code': 'SCT',
                                                        'type': 'general', 'company_id': other.id})
+        revenue = other_env['account.account'].create({'name': 'Income', 'code': '510585',
+            'account_type': 'income', 'company_ids': [Command.set(other.ids)]})
         other_env['tha.staff.credit.config'].create({'company_id': other.id, 'account_id': account.id,
-            'salary_account_id': salary.id, 'journal_id': journal.id})
+            'salary_account_id': salary.id, 'invoice_credit_account_id': revenue.id, 'journal_id': journal.id})
         department = other_env['hr.department'].create({'name': 'Finance', 'company_id': other.id})
         employee = other_env['hr.employee'].create({'name': 'Other Staff', 'company_id': other.id,
                                                     'department_id': department.id})

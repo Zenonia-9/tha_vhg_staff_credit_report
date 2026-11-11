@@ -7,6 +7,9 @@ class AccountMove(models.Model):
 
     tha_staff_credit_batch_id = fields.Many2one('tha.staff.credit.batch', copy=False, ondelete='restrict',
                                                check_company=True, readonly=True)
+    tha_staff_credit_id = fields.Many2one('tha.staff.credit', copy=False, ondelete='restrict',
+                                          check_company=True, readonly=True,
+                                          string='Pending Staff Credit bill')
 
     def tha_check_source_links(self):
         if (self.env['tha.staff.credit'].sudo().search_count([('source_move_id', 'in', self.ids)])
@@ -22,9 +25,13 @@ class AccountMove(models.Model):
             generated = changed.filtered(lambda m: m.line_ids.tha_staff_credit_id and m.state == 'posted')
             if generated:
                 raise UserError(_('Posted Staff Credit deductions must be corrected with a standard reversal.'))
-        if 'tha_staff_credit_batch_id' in values:
-            raise UserError(_('The Staff Credit batch link cannot be changed.'))
-        return super().write(values)
+        if {'tha_staff_credit_batch_id', 'tha_staff_credit_id'} & values.keys():
+            raise UserError(_('Staff Credit accounting links cannot be changed.'))
+        result = super().write(values)
+        if values.get('state') == 'cancel':
+            pending = self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.tha_staff_credit_id.state == 'draft')
+            pending.mapped('tha_staff_credit_id').sudo().write({'state': 'cancel'})
+        return result
 
     def _reverse_moves(self, default_values_list=None, cancel=False):
         self.tha_check_source_links()
@@ -75,11 +82,39 @@ class AccountMove(models.Model):
                         or move.company_id.currency_id.compare_amounts(salary.debit, sum(tagged.mapped('credit')))):
                     raise ValidationError(_('The deduction must debit the configured salary account for the total bill credits.'))
         result = super()._post(soft=soft)
+        for move in self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.state == 'posted'):
+            bill = move.tha_staff_credit_id
+            if bill.state == 'posted':
+                if bill.source_move_id != move:
+                    raise ValidationError(_('This invoice is already linked to another Staff Credit bill.'))
+                continue
+            if bill.state != 'draft' or bill.invoice_id != move or move.move_type != 'out_invoice':
+                raise ValidationError(_('Only the linked draft customer invoice can activate this Staff Credit bill.'))
+            config = self.env['tha.staff.credit.config'].sudo().search([
+                ('company_id', '=', bill.company_id.id)], limit=1)
+            if not config or not config.invoice_credit_account_id:
+                raise ValidationError(_('Configure the original invoice income account before posting this Staff Credit invoice.'))
+            receivable = move.line_ids.filtered(lambda line: line.display_type == 'payment_term'
+                and line.account_id == config.account_id and line.debit > 0)
+            income = move.line_ids.filtered(lambda line: line.display_type == 'product' and line.credit > 0)
+            if (not config or len(receivable) != 1 or move.company_id != bill.company_id
+                    or move.partner_id != bill.partner_id or move.date != bill.charge_date
+                    or move.currency_id != bill.currency_id
+                    or bill.currency_id.compare_amounts(receivable.debit, bill.amount) != 0
+                    or len(income) != 1 or income.account_id != config.invoice_credit_account_id
+                    or bill.currency_id.compare_amounts(income.credit, bill.amount) != 0
+                    or bill.currency_id.compare_amounts(move.amount_total, bill.amount) != 0
+                    or move.amount_tax):
+                raise ValidationError(_('The posted invoice must match the bill amount and use the configured Staff Credit receivable and income accounts without taxes.'))
+            bill.sudo().write({'source_move_id': move.id, 'source_line_id': receivable.id, 'state': 'posted'})
+            bill.sudo().message_post(body=_('Activated from posted original invoice: %s', move.name))
         bills._check_capacity()
         return result
 
     def unlink(self):
         self.tha_check_source_links()
+        if self.env['tha.staff.credit'].sudo().search_count([('invoice_id', 'in', self.ids)]):
+            raise UserError(_('Remove the pending Staff Credit invoice link before deleting this invoice.'))
         if any(m.state == 'posted' and m.line_ids.tha_staff_credit_id for m in self):
             raise UserError(_('Reverse posted Staff Credit deductions instead of deleting them.'))
         return super().unlink()

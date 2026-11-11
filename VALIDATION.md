@@ -1,5 +1,13 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — Draft invoices and lifecycle stages (19.0.2.0.20)
+
+- Added a company-configured original invoice income account, defaulting to account code 510585 where present. Draft Staff Credit bills create linked customer invoice drafts; posting the invoice links its Staff Credit receivable debit and moves the bill to Posted. Cancelling the draft invoice moves it to Cancelled. The form statusbar shows Draft, Posted and Cancelled. Non-posted bills show zero settled amount and balance and are excluded from Excel and deduction processing.
+- Added upgrade migrations to preserve existing linked bills as Posted and apply account 510585 per company where that income account exists. Local THA has the account for company 5, so that setting was populated. Company 4 has no 510585 account, so its setting remains unset; managers must select a valid company income account before creating invoices. No chart-of-accounts records or Staff Credit transactions were created by the migration.
+- Python AST, XML parsing, manifest consistency and `git diff --check` passed. Upgraded local THA with `-u tha_vhg_staff_credit_report --stop-after-init --http-port=8079 --gevent-port=8082 --test-enable --test-tags /tha_vhg_staff_credit_report`. Final result: **33 tests, 0 failures, 0 errors**. Coverage includes invoice debit/credit accounts, draft/post/cancel lifecycle, pending-report exclusion, account defaults and validation, existing invoice linking, and all prior report/deduction workflows.
+- Restarted `odoo_19`. Module `19.0.2.0.20` is installed; existing linked bills remain Posted (6 records). The statusbar and views compiled in the test run. No live deployment or browser visual check was performed.
+- Updated README, USER_GUIDE and the root `CUSTOM_MODULES.md` catalog.
+
 ## 2026-11-05 — Settings from empty list / first-time setup (19.0.2.0.17)
 
 - User reported Expected singleton: tha.staff.credit() on live 10.100.10.61:8019. Inspected the existing live Staff Credit browser tab: an empty list with Settings and the error dialog was visible. No live records, settings, code or services were changed.

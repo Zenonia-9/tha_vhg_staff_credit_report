@@ -88,7 +88,7 @@ class CreditOperation(models.TransientModel):
         if self.company_id not in self.env.companies:
             raise AccessError(_('Select an allowed company.'))
         start = self.month.replace(day=1) if self.month else False
-        domain = [('company_id', '=', self.company_id.id)]
+        domain = [('company_id', '=', self.company_id.id), ('state', '=', 'posted')]
         if self.date_from:
             domain.append(('charge_date', '>=', self.date_from))
         if self.date_to:

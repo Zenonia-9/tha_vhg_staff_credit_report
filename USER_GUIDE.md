@@ -12,13 +12,17 @@ A Staff Credit Manager configures **Settings** from the list. It opens defaults 
 | Staff Credit account | 130100 Receivable - Internal Under HOD (Staff Credit), reconcilable Receivable |
 | Deduction debit account | 701010 Salary & wages (Expense) |
 | Deduction journal | Staff Credit (STCR), Miscellaneous/general journal |
-| Original bill revenue account | 500115 Services Income - Staff Medical Bills |
+| Original invoice income account | 510585 (suggested; configure a company income account) |
 
 The deduction debit account accepts Expense or Cash/Bank type. Choose the account that matches the approved accounting treatment: monthly deductions debit this account and credit Staff Credit. A Cash/Bank account is suitable when your workflow uses it as a clearing account. Confirm the approved account mapping before using it in another company. Settings are separate for each company. **Settings** on a saved bill can override deduction settings; **Save as company default** also changes defaults for future bills.
 
 Staff Credit Readers can review and export. Staff Credit Managers maintain bills. Generating deductions also requires Accounting access; posting requires the normal Accounting permissions. Employees and their work contacts must already exist in the selected company.
 
-## 2. Post the original bill or journal entry
+## 2. Choose how to create the original accounting document
+
+For a new staff charge, use the Staff Credit form's invoice workflow in the next section. It creates a standard customer invoice draft from the entered details. The draft debits the configured Staff Credit receivable and credits the configured income account, with no taxes. Accounting reviews and posts the invoice. The Staff Credit stage changes from **Draft** to **Posted** when the invoice posts; cancelling the invoice changes it to **Cancelled**. Draft and Cancelled bills do not enter Excel reports or deduction generation.
+
+You can also link an existing posted source:
 
 Create the source document in Accounting using the correct company and staff partner. The source must contain a debit to the configured Staff Credit account, in company currency.
 
@@ -34,11 +38,11 @@ Enter the actual charge date, description, reference and receivable due date. Po
 ## 3. Create one Staff Credit bill
 
 1. Click **New** in Staff Credit Report.
-2. Confirm the company and choose **Original invoice / entry**.
-3. If the document has one qualifying **Staff Credit debit item**, it is selected automatically and its selector is hidden. If there are multiple qualifying debit items, choose the correct one in the selector that appears. If none qualify, choose another source document that debits the configured Staff Credit account. Check the source date, partner and **100% Bill** amount.
+2. Confirm the company. For an existing posted source, choose **Original invoice / entry**. For a new charge, leave it blank and enter the charge details below.
+3. If the existing document has one qualifying **Staff Credit debit item**, it is selected automatically and its selector is hidden. If there are multiple qualifying debit items, choose the correct one in the selector that appears. If none qualify, choose another source document that debits the configured Staff Credit account. Check the source date, partner and **100% Bill** amount.
 4. Select the responsible **Employee** and **Department**. Enter **Category** and **Patient / other description**.
 5. Enter the original **Anzer System invoice** reference when available. Put legacy references and useful context in **Notes and authorization → Note**. The Odoo source document is kept as a separate link.
-6. Set **Repayment from** and **Installment count**. Save.
+6. Set **Repayment from** and **Installment count**. Save. For a new charge, the bill remains in **Draft**; click **Create Draft Invoice** to create and open the linked customer invoice. Review and post it through normal Accounting actions. After posting, the bill appears as **Posted** in the register. Existing-source bills are posted immediately after saving because their source document is already posted.
 7. Record the actual authorizer and date if required by your approval process. These fields record information; they do not trigger an approval workflow.
 
 Each company has its own running reference: `SC/<company ID>/000001`, `000002`, etc. Existing references are retained when a sequence is first introduced; new numbers continue after the highest existing suffix. Numbers may have gaps after cancelled/rolled-back operations.
@@ -90,7 +94,7 @@ To correct an unused generated deduction, delete its draft and regenerate it. Co
 
 Click **Export Excel**, check the company and filters, then click **Export Excel** in the dialog. List search filters are not automatically copied into the export wizard: select the desired rows or set the wizard filters explicitly.
 
-Choose any date in the desired **Month** to report through that month's end. Leave it blank to include all charge months and calculate settlements through today. Employee, Department, Category and Status are optional filters; **All** status includes open and completed bills.
+Choose any date in the desired **Month** to report through that month's end. Leave it blank to include all posted charge months and calculate settlements through today. Employee, Department, Category and Status are optional filters; **All** status includes open and completed bills. Draft and Cancelled bills are excluded.
 
 In the workbook:
 

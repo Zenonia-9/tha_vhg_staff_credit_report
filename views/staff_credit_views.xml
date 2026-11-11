@@ -10,7 +10,7 @@
                     <button name="action_settings" type="object" string="Settings" display="always" context="{'tha_staff_credit_company_settings': True}" groups="tha_vhg_staff_credit_report.group_manager"/>
                 </header>
                 <field name="name"/><field name="charge_date"/><field name="employee_id"/><field name="department_id"/>
-                <field name="description"/><field name="source_move_id"/><field name="amount" sum="Bills"/>
+                <field name="state"/><field name="description"/><field name="source_move_id"/><field name="amount"/>
                 <field name="settled_amount" sum="Settled"/><field name="balance" sum="Balance"/>
                 <field name="company_id" groups="base.group_multi_company"/><field name="currency_id" column_invisible="True"/>
             </list>
@@ -21,16 +21,19 @@
         <field name="arch" type="xml">
             <form string="Staff Credit Bill">
                 <header>
-                    <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?" invisible="schedule_ids"/>
-                    <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id, 'tha_from_credit_form': True}"/>
-                    <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <button name="action_create_original_invoice" type="object" string="Create Draft Invoice" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager,account.group_account_user" invisible="state != 'draft' or invoice_id"/>
+                    <button name="action_generate_schedule" type="object" string="Generate Repayment Plan" class="btn-primary" groups="tha_vhg_staff_credit_report.group_manager" confirm="Replace the unused plan with equal monthly installments?" invisible="state != 'posted' or schedule_ids"/>
+                    <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id, 'tha_from_credit_form': True}" invisible="state != 'posted'"/>
+                    <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager" invisible="state != 'posted'"/>
                     <button name="action_settings" type="object" string="Settings" groups="tha_vhg_staff_credit_report.group_manager"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,posted,cancel"/>
                 </header>
                 <sheet>
                     <h1><field name="name"/></h1>
                     <group>
                         <group string="Bill link">
-                            <field name="company_id"/><field name="source_move_id" options="{'no_create': True}"/>
+                            <field name="company_id"/><field name="invoice_id" readonly="1" invisible="not invoice_id"/>
+                            <field name="source_move_id" options="{'no_create': True}" invisible="state != 'posted'"/>
                             <field name="source_line_selection_required" invisible="1"/>
                             <field name="source_line_id" options="{'no_create': True}" invisible="not source_line_selection_required" force_save="1"/>
                             <field name="charge_date"/><field name="partner_id"/><field name="amount"/>
@@ -104,6 +107,7 @@
             <group><field name="company_id"/>
                 <field name="account_id" domain="[('company_ids', 'in', company_id), ('account_type', '=', 'asset_receivable'), ('reconcile', '=', True)]"/>
                 <field name="salary_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['expense', 'expense_direct_cost', 'asset_cash'])]"/>
+                <field name="invoice_credit_account_id" domain="[('company_ids', 'in', company_id), ('account_type', 'in', ['income', 'income_other'])]"/>
                 <field name="journal_id"/>
             </group>
         </form></field>
