@@ -1,6 +1,6 @@
 {
     'name': 'VHG Staff Credit Report',
-    'version': '19.0.2.0.34',
+    'version': '19.0.2.0.36',
     'summary': 'Linked staff bills, monthly deduction drafts and Excel reporting',
     'author': 'Thein Htoo Aung',
     'license': 'LGPL-3',

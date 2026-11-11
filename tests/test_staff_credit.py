@@ -513,6 +513,29 @@ class TestStaffCredit(TransactionCase):
         with self.assertRaises(ValidationError), self.env.cr.savepoint():
             second_bill.invoice_id = invoice
 
+    def test_invoice_picker_includes_other_same_company_drafts_until_corrected(self):
+        bill = self._pending_bill()
+        other_partner = self.env['res.partner'].create({'name': 'Different draft customer'})
+        other_partner.with_company(self.company).property_account_receivable_id = self.account
+        invoice = self.env['account.move'].create({
+            'company_id': self.company.id, 'journal_id': self.sales_journal.id,
+            'move_type': 'out_invoice', 'invoice_date': bill.charge_date,
+            'partner_id': other_partner.id,
+            'invoice_line_ids': [Command.create({
+                'name': 'Existing company draft', 'account_id': self.invoice_credit.id,
+                'quantity': 1, 'price_unit': bill.amount,
+                'tax_ids': [Command.clear()],
+            })],
+        })
+        invoice.line_ids.filtered(lambda line: line.display_type == 'payment_term').account_id = self.account
+        self.assertNotIn("('partner_id', '=', partner_id)", self.env['tha.staff.credit']._fields['invoice_id'].domain)
+        bill.invoice_id = invoice
+        invoice.partner_id = bill.partner_id
+        invoice.action_post()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'posted')
+        self.assertEqual(bill.source_move_id, invoice)
+
     def test_xml_development_loader_all_views(self):
         from odoo.addons.base.models.ir_ui_view import get_view_arch_from_file
         from odoo.tools import file_path

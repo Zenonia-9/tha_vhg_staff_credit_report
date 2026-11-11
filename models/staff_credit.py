@@ -89,7 +89,7 @@ class StaffCredit(models.Model):
     department_id = fields.Many2one('hr.department', required=True, check_company=True, tracking=True)
     partner_id = fields.Many2one('res.partner', required=True, check_company=True, tracking=True)
     invoice_id = fields.Many2one('account.move', check_company=True, ondelete='restrict', copy=False,
-                                 string='Customer invoice', domain="[('company_id', '=', company_id), ('partner_id', '=', partner_id), ('move_type', '=', 'out_invoice'), ('state', '=', 'draft'), ('tha_staff_credit_id', 'in', [False, id])]")
+                                 string='Customer invoice', domain="[('company_id', '=', company_id), ('move_type', '=', 'out_invoice'), ('state', '=', 'draft'), ('tha_staff_credit_id', 'in', [False, id])]")
     source_move_id = fields.Many2one('account.move', check_company=True, ondelete='restrict',
                                     string='Original invoice / entry', tracking=True,
                                     domain="[('company_id', '=', company_id), ('state', '=', 'posted')]")
@@ -243,7 +243,6 @@ class StaffCredit(models.Model):
                 if (bill.invoice_id and (bill.invoice_id.company_id != bill.company_id
                         or bill.invoice_id.move_type != 'out_invoice'
                         or bill.invoice_id.tha_staff_credit_id != bill
-                        or bill.invoice_id.partner_id != bill.partner_id
                         or bill.invoice_id.state != ('draft' if bill.state == 'draft' else 'cancel'))):
                     raise ValidationError(_('The linked invoice must be this bill’s company customer invoice in Draft or Cancelled state.'))
                 if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
@@ -290,7 +289,7 @@ class StaffCredit(models.Model):
                 raise UserError(_('A posted customer invoice cannot be replaced.'))
             if new_invoice:
                 if (new_invoice.state != 'draft' or new_invoice.move_type != 'out_invoice'
-                        or new_invoice.company_id != bill.company_id or new_invoice.partner_id != bill.partner_id
+                        or new_invoice.company_id != bill.company_id
                         or new_invoice.tha_staff_credit_id not in (self.env['tha.staff.credit'], bill)
                         or self.env['tha.staff.credit'].search_count([
                             ('invoice_id', '=', new_invoice.id), ('id', '!=', bill.id)])):

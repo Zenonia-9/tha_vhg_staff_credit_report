@@ -36,7 +36,7 @@ class AccountMove(models.Model):
                 if (not bill or len(self) != 1 or self.tha_staff_credit_id
                         or self.state != 'draft' or self.move_type != 'out_invoice'
                         or bill.state != 'draft' or bill.source_move_id
-                        or bill.company_id != self.company_id or bill.partner_id != self.partner_id
+                        or bill.company_id != self.company_id
                         or (bill.invoice_id and bill.invoice_id != self
                             and bill.invoice_id.tha_staff_credit_id == bill)):
                     raise ValidationError(_('Only an unlinked draft customer invoice for a draft Staff Credit bill can be linked.'))
