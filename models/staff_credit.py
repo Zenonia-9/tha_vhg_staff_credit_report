@@ -89,7 +89,7 @@ class StaffCredit(models.Model):
     department_id = fields.Many2one('hr.department', required=True, check_company=True, tracking=True)
     partner_id = fields.Many2one('res.partner', required=True, check_company=True, tracking=True)
     invoice_id = fields.Many2one('account.move', check_company=True, ondelete='restrict', copy=False,
-                                 readonly=True, string='Generated invoice')
+                                 string='Customer invoice', domain="[('company_id', '=', company_id), ('partner_id', '=', partner_id), ('move_type', '=', 'out_invoice'), ('state', '=', 'draft'), ('tha_staff_credit_id', 'in', [False, id])]")
     source_move_id = fields.Many2one('account.move', check_company=True, ondelete='restrict',
                                     string='Original invoice / entry', tracking=True,
                                     domain="[('company_id', '=', company_id), ('state', '=', 'posted')]")
@@ -196,6 +196,7 @@ class StaffCredit(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        invoice_ids = [vals.pop('invoice_id', False) for vals in vals_list]
         for vals in vals_list:
             if vals.get('employee_id'):
                 employee = self.env['hr.employee.public'].browse(vals['employee_id'])
@@ -225,6 +226,9 @@ class StaffCredit(models.Model):
                     'code': 'tha.staff.credit', 'company_id': bill.company_id.id,
                     'prefix': prefix, 'padding': 6, 'number_next': last + 1})
             bill.name = sequence.next_by_id()
+        for bill, invoice_id in zip(records, invoice_ids):
+            if invoice_id:
+                bill.write({'invoice_id': invoice_id})
         return records
 
     @api.constrains('state', 'invoice_id', 'source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id',
@@ -240,9 +244,8 @@ class StaffCredit(models.Model):
                         or bill.invoice_id.move_type != 'out_invoice'
                         or bill.invoice_id.tha_staff_credit_id != bill
                         or bill.invoice_id.partner_id != bill.partner_id
-                        or bill.invoice_id.invoice_date != bill.charge_date
                         or bill.invoice_id.state != ('draft' if bill.state == 'draft' else 'cancel'))):
-                    raise ValidationError(_('The linked invoice must be this bill’s company customer invoice.'))
+                    raise ValidationError(_('The linked invoice must be this bill’s company customer invoice in Draft or Cancelled state.'))
                 if (bill.amount <= 0 or not 1 <= bill.installment_count <= 600
                         or bill.start_month.replace(day=1) < bill.charge_date.replace(day=1)
                         or bill.employee_id.company_id != bill.company_id
@@ -274,6 +277,29 @@ class StaffCredit(models.Model):
         identity = {'source_move_id', 'source_line_id', 'amount', 'company_id', 'partner_id', 'employee_id', 'charge_date'}
         if identity & values.keys() and any(b.schedule_ids or b.allocation_ids or b.deduction_line_ids for b in self):
             raise UserError(_('Remove unused schedules and settlement links before changing the bill identity or amount.'))
+        if ('invoice_id' in values and not self.env.context.get('tha_staff_credit_invoice_sync')
+                and not self.env.context.get('tha_staff_credit_invoice_delete')):
+            if len(self) != 1:
+                raise UserError(_('Change a customer invoice link on one Staff Credit bill at a time.'))
+            bill = self
+            if bill.state != 'draft' or bill.source_move_id:
+                raise UserError(_('A customer invoice link cannot be changed after the Staff Credit bill is posted or cancelled.'))
+            new_invoice = self.env['account.move'].browse(values.get('invoice_id')).exists()
+            old_invoice = bill.invoice_id
+            if old_invoice and old_invoice.state == 'posted':
+                raise UserError(_('A posted customer invoice cannot be replaced.'))
+            if new_invoice:
+                if (new_invoice.state != 'draft' or new_invoice.move_type != 'out_invoice'
+                        or new_invoice.company_id != bill.company_id or new_invoice.partner_id != bill.partner_id
+                        or new_invoice.tha_staff_credit_id not in (self.env['tha.staff.credit'], bill)
+                        or self.env['tha.staff.credit'].search_count([
+                            ('invoice_id', '=', new_invoice.id), ('id', '!=', bill.id)])):
+                    raise ValidationError(_('Select an unlinked draft customer invoice for this company and partner.'))
+            if old_invoice and old_invoice != new_invoice and old_invoice.tha_staff_credit_id == bill:
+                old_invoice.sudo().with_context(tha_staff_credit_unlink=True).write({'tha_staff_credit_id': False})
+            if new_invoice and new_invoice != old_invoice and new_invoice.tha_staff_credit_id != bill:
+                new_invoice.sudo().with_context(tha_staff_credit_invoice_link=True).write(
+                    {'tha_staff_credit_id': bill.id})
         return super().write(values)
 
     def unlink(self):
@@ -282,7 +308,7 @@ class StaffCredit(models.Model):
         for bill in self.filtered(lambda b: b.state == 'cancel'):
             if bill.invoice_id:
                 bill.invoice_id.sudo().with_context(tha_staff_credit_unlink=True).write({'tha_staff_credit_id': False})
-                bill.sudo().write({'invoice_id': False})
+                bill.sudo().with_context(tha_staff_credit_invoice_delete=True).write({'invoice_id': False})
         return super().unlink()
 
     def action_reset_to_draft(self):

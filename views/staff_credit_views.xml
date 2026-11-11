@@ -35,7 +35,9 @@
                     <h1><field name="name"/></h1>
                     <group>
                         <group string="Bill link">
-                            <field name="company_id"/><field name="invoice_id" readonly="1" invisible="not invoice_id"/>
+                            <field name="company_id"/><field name="invoice_id" string="Customer invoice"
+                                options="{'no_create': True, 'no_create_edit': True}"
+                                readonly="state != 'draft'"/>
                             <field name="source_move_id" options="{'no_create': True}" invisible="state != 'posted'"/>
                             <field name="source_line_selection_required" invisible="1"/>
                             <field name="source_line_id" options="{'no_create': True}" invisible="not source_line_selection_required" force_save="1"/>

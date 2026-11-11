@@ -25,10 +25,28 @@ class AccountMove(models.Model):
             generated = changed.filtered(lambda m: m.line_ids.tha_staff_credit_id and m.state == 'posted')
             if generated:
                 raise UserError(_('Posted Staff Credit deductions must be corrected with a standard reversal.'))
-        if ('tha_staff_credit_batch_id' in values
-                or ('tha_staff_credit_id' in values and not self.env.context.get('tha_staff_credit_unlink'))):
+        if 'tha_staff_credit_batch_id' in values:
             raise UserError(_('Staff Credit accounting links cannot be changed.'))
+        if 'tha_staff_credit_id' in values:
+            if self.env.context.get('tha_staff_credit_unlink'):
+                if values['tha_staff_credit_id']:
+                    raise UserError(_('The invoice unlink operation can only clear a Staff Credit link.'))
+            elif self.env.context.get('tha_staff_credit_invoice_link'):
+                bill = self.env['tha.staff.credit'].sudo().browse(values['tha_staff_credit_id']).exists()
+                if (not bill or len(self) != 1 or self.tha_staff_credit_id
+                        or self.state != 'draft' or self.move_type != 'out_invoice'
+                        or bill.state != 'draft' or bill.source_move_id
+                        or bill.company_id != self.company_id or bill.partner_id != self.partner_id
+                        or (bill.invoice_id and bill.invoice_id != self
+                            and bill.invoice_id.tha_staff_credit_id == bill)):
+                    raise ValidationError(_('Only an unlinked draft customer invoice for a draft Staff Credit bill can be linked.'))
+            else:
+                raise UserError(_('Staff Credit accounting links cannot be changed.'))
         result = super().write(values)
+        if values.get('tha_staff_credit_id') and self.env.context.get('tha_staff_credit_invoice_link'):
+            bill = self.env['tha.staff.credit'].sudo().browse(values['tha_staff_credit_id'])
+            if bill.invoice_id != self:
+                bill.with_context(tha_staff_credit_invoice_sync=True).write({'invoice_id': self.id})
         if values.get('state') == 'cancel':
             pending = self.sudo().filtered(lambda m: m.tha_staff_credit_id and m.tha_staff_credit_id.state == 'draft')
             pending.mapped('tha_staff_credit_id').sudo().write({'state': 'cancel'})

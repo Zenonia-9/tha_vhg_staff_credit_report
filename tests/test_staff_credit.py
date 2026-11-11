@@ -461,6 +461,58 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(bill.source_move_id, invoice)
         self.assertEqual(bill.amount, 300)
 
+    def test_existing_draft_invoice_can_be_selected_replaced_and_posts_once(self):
+        bill = self._pending_bill()
+
+        def make_invoice(label):
+            invoice = self.env['account.move'].create({
+                'company_id': self.company.id, 'journal_id': self.sales_journal.id,
+                'move_type': 'out_invoice', 'invoice_date': bill.charge_date,
+                'partner_id': bill.partner_id.id,
+                'invoice_line_ids': [Command.create({
+                    'name': label, 'account_id': self.invoice_credit.id,
+                    'quantity': 1, 'price_unit': bill.amount,
+                    'tax_ids': [Command.clear()],
+                })],
+            })
+            invoice.line_ids.filtered(lambda line: line.display_type == 'payment_term').account_id = self.account
+            return invoice
+
+        first, second = make_invoice('Existing invoice one'), make_invoice('Existing invoice two')
+        bill.invoice_id = first
+        self.assertEqual(first.tha_staff_credit_id, bill)
+        self.assertEqual(bill.invoice_id, first)
+
+        bill.invoice_id = second
+        first.invalidate_recordset()
+        self.assertFalse(first.tha_staff_credit_id)
+        self.assertEqual(second.tha_staff_credit_id, bill)
+        self.assertEqual(bill.invoice_id, second)
+
+        second.action_post()
+        bill.invalidate_recordset()
+        self.assertEqual(bill.state, 'posted')
+        self.assertEqual(bill.source_move_id, second)
+        self.assertEqual(bill.source_line_id.account_id, self.account)
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            bill.invoice_id = first
+
+    def test_existing_invoice_cannot_be_linked_to_two_bills(self):
+        first_bill, second_bill = self._pending_bill(), self._pending_bill()
+        invoice = self.env['account.move'].create({
+            'company_id': self.company.id, 'journal_id': self.sales_journal.id,
+            'move_type': 'out_invoice', 'invoice_date': first_bill.charge_date,
+            'partner_id': first_bill.partner_id.id,
+            'invoice_line_ids': [Command.create({
+                'name': 'Unique existing invoice', 'account_id': self.invoice_credit.id,
+                'quantity': 1, 'price_unit': first_bill.amount,
+                'tax_ids': [Command.clear()],
+            })],
+        })
+        first_bill.invoice_id = invoice
+        with self.assertRaises(ValidationError), self.env.cr.savepoint():
+            second_bill.invoice_id = invoice
+
     def test_xml_development_loader_all_views(self):
         from odoo.addons.base.models.ir_ui_view import get_view_arch_from_file
         from odoo.tools import file_path
