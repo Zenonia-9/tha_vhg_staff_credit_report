@@ -1,5 +1,11 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — Show newly imported bills first (19.0.2.0.32)
+
+- Changed the Staff Credit default order to record ID descending. New entries now appear at the top regardless of their historical Charge Date.
+- Extended the native import regression to verify a freshly imported backdated bill sorts above a previously created bill.
+- Validation passed: Python compileall, XML parsing, manifest parsing, `git diff --check`, module upgrade on THA, and the full addon suite (**38 tests, 0 failures, 0 errors**).
+
 ## 2026-11-11 — Derive department and partner on native imports (19.0.2.0.31)
 
 - Native Odoo imports do not execute form onchanges. When Department and Partner are omitted or blank, Staff Credit creation now fills them from the selected Employee's Department and work contact. Explicit non-empty values remain supported.

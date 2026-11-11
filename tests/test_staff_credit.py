@@ -335,6 +335,7 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(len(self.env['account.move'].search(action['domain'])), 1)
 
     def test_native_import_creates_backdated_pending_bill(self):
+        self._pending_bill(amount=300)
         view = self.env.ref('tha_vhg_staff_credit_report.view_credit_list')
         self.assertIn('import="1"', view.arch_db)
         result = self.env['tha.staff.credit'].load(
@@ -350,6 +351,8 @@ class TestStaffCredit(TransactionCase):
         self.assertEqual(bill.state, 'draft')
         self.assertEqual(bill.department_id, self.department)
         self.assertEqual(bill.partner_id, self.partner)
+        self.assertEqual(self.env['tha.staff.credit'].search([
+            ('company_id', '=', self.company.id)], limit=1), bill)
         self.assertFalse(bill.invoice_id)
         invoice_action = bill.with_user(self.manager).action_create_original_invoice()
         invoice = self.env['account.move'].browse(invoice_action['res_id'])

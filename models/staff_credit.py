@@ -75,7 +75,7 @@ class StaffCredit(models.Model):
     _name = 'tha.staff.credit'
     _description = 'Staff Credit Bill'
     _inherit = ['mail.thread', 'mail.activity.mixin']
-    _order = 'charge_date, id'
+    _order = 'id desc'
     _check_company_auto = True
 
     name = fields.Char(default='New', required=True, copy=False, readonly=True)
