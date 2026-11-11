@@ -13,8 +13,8 @@
                 <field name="description"/><field name="source_move_id"/><field name="amount"/>
                 <field name="settled_amount" sum="Settled"/><field name="balance" sum="Balance"/>
                 <field name="company_id" groups="base.group_multi_company"/><field name="currency_id" column_invisible="True"/>
-                <field name="state" widget="badge" decoration-info="state == 'draft'"
-                       decoration-success="state == 'posted'" decoration-danger="state == 'cancel'"/>
+                <field name="stage" string="State" widget="badge" decoration-info="stage == 'draft'"
+                       decoration-success="stage in ('posted', 'repaid')" decoration-danger="stage == 'cancel'"/>
             </list>
         </field>
     </record>
@@ -29,7 +29,7 @@
                     <button name="%(action_export)d" type="action" string="Export Excel" context="{'default_mode': 'export', 'active_model': 'tha.staff.credit', 'active_id': id, 'tha_from_credit_form': True}" invisible="state != 'posted'"/>
                     <button name="%(action_deductions)d" type="action" string="Generate Monthly Deductions" groups="tha_vhg_staff_credit_report.group_manager" invisible="state != 'posted'"/>
                     <button name="action_settings" type="object" string="Settings" groups="tha_vhg_staff_credit_report.group_manager"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,posted,cancel"/>
+                    <field name="stage" string="State" widget="statusbar" statusbar_visible="draft,posted,repaid,cancel"/>
                 </header>
                 <sheet>
                     <h1><field name="name"/></h1>

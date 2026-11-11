@@ -71,6 +71,7 @@ class TestStaffCredit(TransactionCase):
     def test_original_invoice_draft_post_and_cancel_stage(self):
         bill = self._pending_bill()
         self.assertEqual(bill.state, 'draft')
+        self.assertEqual(bill.stage, 'draft')
         self.assertEqual((bill.settled_amount, bill.balance), (0, 0))
         action = bill.with_user(self.manager).action_create_original_invoice()
         invoice = self.env['account.move'].browse(action['res_id'])
@@ -95,6 +96,7 @@ class TestStaffCredit(TransactionCase):
         invoice.action_post()
         bill.invalidate_recordset()
         self.assertEqual(bill.state, 'posted')
+        self.assertEqual(bill.stage, 'posted')
         self.assertEqual(bill.source_move_id, invoice)
         self.assertEqual(bill.source_line_id.account_id, self.account)
         self.assertEqual(bill.source_line_id.debit, bill.amount)
@@ -108,6 +110,7 @@ class TestStaffCredit(TransactionCase):
         invoice.button_cancel()
         bill.invalidate_recordset()
         self.assertEqual(bill.state, 'cancel')
+        self.assertEqual(bill.stage, 'cancel')
 
     def test_delete_unposted_original_invoice_releases_draft_bill(self):
         bill = self._pending_bill()
@@ -196,6 +199,7 @@ class TestStaffCredit(TransactionCase):
         reverse = move._reverse_moves([{'date': '2026-11-30'}])
         reverse.action_post()
         self.assertEqual(bill._settled_at(), 0)
+        self.assertEqual(bill.stage, 'posted')
         self.assertEqual(self._operation('2026-10-01')._rows()[0], october)
         self.assertEqual(self._operation('2026-11-01')._rows()[0][9], 300)
         self.assertEqual(self._operation('2026-11-01')._rows()[0][7], '0/3')
@@ -219,11 +223,15 @@ class TestStaffCredit(TransactionCase):
         bill = self._bill(500, count=5)
         self._allocate(bill, 250, day='2026-09-30')
         self._allocate(bill, 50, day='2026-10-31')
+        self.assertEqual(bill.stage, 'posted')
         self.assertEqual(self._operation('2026-09-01')._rows()[0][7], '2/5')
         self.assertEqual(self._operation('2026-10-01')._rows()[0][7], '3/5')
         self.assertEqual(self._operation('2027-03-01')._rows()[0][7:9], ['3/5', 0])
         self.assertEqual(self._operation(month=False)._rows()[0][7], '3/5')
         self._allocate(bill, 200, day='2026-11-30')
+        bill.invalidate_recordset(['stage', 'balance'])
+        self.assertEqual(bill.stage, 'repaid')
+        self.assertEqual(bill.balance, 0)
         self.assertEqual(self._operation('2026-11-01')._rows()[0][7], '5/5')
         self.assertEqual(self._operation('2026-10-01')._rows()[0][7], '3/5')
 
@@ -454,11 +462,16 @@ class TestStaffCredit(TransactionCase):
                                               'tha_vhg_staff_credit_report.' + xmlid)
                 self.assertIsNotNone(etree.fromstring(arch))
         list_arch = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_list').arch_db)
-        state_field = list_arch.xpath('//field[@name="state"]')[0]
+        state_field = list_arch.xpath('//field[@name="stage"]')[0]
         self.assertEqual(state_field.get('widget'), 'badge')
-        self.assertEqual(state_field.get('decoration-info'), "state == 'draft'")
-        self.assertEqual(state_field.get('decoration-success'), "state == 'posted'")
-        self.assertEqual(state_field.get('decoration-danger'), "state == 'cancel'")
+        self.assertEqual(state_field.get('decoration-info'), "stage == 'draft'")
+        self.assertEqual(state_field.get('decoration-success'), "stage in ('posted', 'repaid')")
+        self.assertEqual(state_field.get('decoration-danger'), "stage == 'cancel'")
+        self.assertEqual(state_field.get('string'), 'State')
+        form_arch = etree.fromstring(self.env.ref('tha_vhg_staff_credit_report.view_credit_form').arch_db)
+        status_field = form_arch.xpath('//header/field[@name="stage"]')[0]
+        self.assertEqual(status_field.get('widget'), 'statusbar')
+        self.assertEqual(status_field.get('statusbar_visible'), 'draft,posted,repaid,cancel')
         for model, types in [('tha.staff.credit', ['list', 'form', 'search']),
                              ('tha.staff.credit.config', ['form']),
                              ('tha.staff.credit.operation', ['form']),

@@ -81,6 +81,8 @@ class StaffCredit(models.Model):
     name = fields.Char(default='New', required=True, copy=False, readonly=True)
     state = fields.Selection([('draft', 'Draft'), ('posted', 'Posted'), ('cancel', 'Cancelled')],
                              default='draft', required=True, readonly=True, copy=False)
+    stage = fields.Selection([('draft', 'Draft'), ('posted', 'Posted'), ('repaid', 'Repaid'),
+                              ('cancel', 'Cancelled')], compute='_compute_stage', string='Repayment stage')
     company_id = fields.Many2one('res.company', required=True, default=lambda s: s.env.company)
     currency_id = fields.Many2one(related='company_id.currency_id')
     employee_id = fields.Many2one('hr.employee.public', required=True, check_company=True, tracking=True)
@@ -112,6 +114,12 @@ class StaffCredit(models.Model):
     deduction_line_ids = fields.One2many('account.move.line', 'tha_staff_credit_id', readonly=True)
     settled_amount = fields.Monetary(compute='_compute_balance')
     balance = fields.Monetary(compute='_compute_balance')
+
+    @api.depends('state', 'balance')
+    def _compute_stage(self):
+        for bill in self:
+            bill.stage = ('repaid' if bill.state == 'posted' and bill.currency_id
+                          and bill.currency_id.is_zero(bill.balance) else bill.state)
 
     @api.depends('start_month', 'installment_count', 'schedule_ids.due_date')
     def _compute_end_date(self):

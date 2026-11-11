@@ -1,5 +1,11 @@
 # Local validation — Staff Credit rebuild
 
+## 2026-11-11 — Repaid stage for completed balances (19.0.2.0.30)
+
+- Added a read-only computed State display: Draft, Posted, Repaid, or Cancelled. A posted bill displays Repaid when posted settlements reduce its balance to zero; the underlying accounting-linked state remains Posted so invoice and deduction workflows continue to use the existing lifecycle.
+- The list badge and form statusbar now include Repaid. Repaid is green like Posted. Added regression coverage for partial and complete manual settlement and view decoration.
+- Validation: Python compileall, XML parsing, manifest parsing and `git diff --check` passed. Upgrade and full addon tests on THA passed: **38 tests, 0 failures, 0 errors**.
+
 ## 2026-11-11 — List stage placement, invoice settings and deletion (19.0.2.0.22)
 
 - Moved the colored State badge to the final list column. Added Original invoice credit account to the bill Settings dialog; applying a bill-specific setting passes it to invoice creation, and saving as company default updates the company configuration.
